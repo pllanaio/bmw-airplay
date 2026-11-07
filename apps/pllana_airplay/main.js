@@ -32,7 +32,7 @@ mgu.run({ async start(ctx) {
     });
     ui.onClick('BTN_STOP', () => { notice = ''; receiver.stop(); });
     ui.onClick('BTN_MIRROR', () => {
-        if (state.detached || state.mode === 'hls') { notice = ''; receiver.resumeMirror(); controlsUntil = 0; }
+        if (state.detached || state.mode === 'hls' || state.playlistPending) { notice = ''; receiver.resumeMirror(); controlsUntil = 0; }
         else notice = 'Kein Video aktiv – die Spiegelung läuft bereits.';
     });
     ui.onClick('BTN_CLOSE', async () => { closing = true; await receiver.stop(); await ui.close('MAIN'); });
@@ -54,7 +54,7 @@ mgu.run({ async start(ctx) {
     // renderer, so this only re-records a small canvas.
     ctx.loop('MAIN', 10, async () => {
         const transitioning = state.phase === 'loading' ||
-            (state.mode === 'waiting' && state.returnMode === 'mirror' && !!state.pin && !state.error);
+            (state.mode === 'waiting' && state.returnMode === 'mirror' && !!state.pin && !state.error && !state.playlistPending);
         const fullscreen = (!!state.frame || transitioning) && Date.now() >= controlsUntil && video.ready();
         ctx.display.setPresentation(fullscreen);
         const size = fullscreen ? ctx.display.gpu.screen : { w: 1600, h: 520 };

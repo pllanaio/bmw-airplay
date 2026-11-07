@@ -26,6 +26,9 @@ App und native Laufzeit müssen gemeinsam aktualisiert werden.
   direkte YouTube-Wiedergabe bei im Hintergrund laufender iPhone-App.
 - Native Vollbildausgabe mit erhaltenem Seitenverhältnis und Unterstützung
   wechselnder Bildabmessungen; Fotos und Videos nutzen dieselbe Ausgabe.
+- Übergabepfad für YouTube-Playlists: Ende-Meldung an das iPhone und Erhalt
+  der Sitzung für den nächsten Titel; Fahrzeugabnahme steht aus.
+  [Verwendung und Testmatrix](docs/PLAYLISTS.md).
 - Eigene pllana.io-Oberfläche, 140×140-App-Symbol und deutsche Schriftzeichen.
 - Passwortbasierte Kopplung mit einem auf der MGU angezeigten sechsstelligen Code.
 
@@ -45,7 +48,8 @@ App und native Laufzeit müssen gemeinsam aktualisiert werden.
    im AirPlay-Menü von YouTube auswählen und gegebenenfalls den Code eingeben.
 5. Ein aus der Spiegelung gestartetes AirPlay-Video wird beim Wechsel in den
    Videomodus automatisch unabhängig gesteuert. Das iPhone bleibt bedienbar;
-   „Zur Spiegelung“ oder das Videoende führen zurück. Dies setzt einen
+   „Zur Spiegelung“ führt zurück; nach Videoende kann YouTube den nächsten
+   Playlist-Titel übergeben. Dies setzt einen
    tatsächlichen AirPlay-Videostream und Internet für dessen Abruf voraus.
 6. „Trennen“ beendet den Empfang und gibt die eigene Audioverbindung frei.
 

@@ -39,11 +39,11 @@ static float removed(void *cls) { (void)cls; return 12.0f; }
 static void remove_playlist(raop_t *raop) {
     plist_t root = plist_new_dict(), params = plist_new_dict(), item = plist_new_dict();
     plist_dict_set_item(root, "type", plist_new_string("playlistRemove"));
-    plist_dict_set_item(item, "uuid", plist_new_string("detached-test"));
+    plist_dict_set_item(item, "uuid", plist_new_string("dddddddd-1111-4222-8333-444444444444"));
     plist_dict_set_item(params, "item", item); plist_dict_set_item(root, "params", params);
     char *body = NULL; uint32_t bytes = 0; plist_to_bin(root, &body, &bytes);
     char header[512];
-    int size = snprintf(header, sizeof header, "POST /action HTTP/1.1\r\nHost: receiver\r\nX-Apple-Session-ID: test-session\r\nContent-Type: application/x-apple-binary-plist\r\nContent-Length: %u\r\n\r\n", bytes);
+    int size = snprintf(header, sizeof header, "POST /action HTTP/1.1\r\nHost: receiver\r\nX-Apple-Session-ID: 11111111-2222-4333-8444-555555555555\r\nContent-Type: application/x-apple-binary-plist\r\nContent-Length: %u\r\n\r\n", bytes);
     http_request_t *request = http_request_init();
     http_request_add_data(request, header, size); http_request_add_data(request, body, bytes);
     assert(http_request_is_complete(request));
@@ -81,10 +81,10 @@ int main(void) {
     request_playlist(&raop, raop.airplay_video[1], "#EXTM3U\nNEW\n");
     /* playlistRemove from a backgrounded sender must preserve current_video:
        the local player can still request its playlist and finish normally. */
-    set_playback_uuid(raop.airplay_video[0], "old-test", strlen("old-test"));
-    set_playback_uuid(raop.airplay_video[1], "detached-test", strlen("detached-test"));
+    set_playback_uuid(raop.airplay_video[0], "aaaaaaaa-1111-4222-8333-444444444444", 36);
+    set_playback_uuid(raop.airplay_video[1], "dddddddd-1111-4222-8333-444444444444", 36);
     raop.current_video = 1;
-    set_apple_session_id(raop.airplay_video[1], "test-session", strlen("test-session"));
+    set_apple_session_id(raop.airplay_video[1], "11111111-2222-4333-8444-555555555555", 36);
     raop.callbacks.on_video_playlist_remove = removed;
     raop.callbacks.is_hls_detached = is_detached;
     detached = true; remove_playlist(&raop);

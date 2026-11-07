@@ -29,6 +29,14 @@ int main(int argc, char **argv) {
     r->bus = gst_element_get_bus(r->pipeline);
     r->codec = hls;
     renderer = r; renderer_type[0] = r; n_renderers = 1;
+    /* A sender can replace an item before the GLib EOS watcher runs. The
+     * previous pipeline's pending EOS must never finish that successor. */
+    r->eos = TRUE; g_atomic_int_set(&mgu_hls_natural_end, 1);
+    video_renderer_begin_hls_transition();
+    g_assert(!video_renderer_eos_watch());
+    g_atomic_int_set(&mgu_hls_pipeline_generation, g_atomic_int_get(&mgu_hls_generation));
+    g_assert(video_renderer_eos_watch());
+    g_assert(!video_renderer_hls_completed());
     hls_buffer_full = FALSE;
     video_renderer_resume();
     GstState state;

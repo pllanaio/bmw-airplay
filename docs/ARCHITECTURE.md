@@ -87,6 +87,7 @@ Der Zustand enthält getrennte Informationen:
 | phase | stopped, starting, waiting, loading, mirroring, stopping oder error |
 | mode | mirror, hls, waiting oder kein Modus |
 | returnMode | Rückkehr zur Spiegelung oder zum Warten nach einem Video |
+| playlistPending | Natürlicher Titelabschluss gemeldet; die Sitzung erwartet einen möglichen Folgetitel |
 | frame/file | Aktuell freigegebener Frame und sein Transport |
 | audio/audioError | Eigene Audioverbindung und deren Verfügbarkeit |
 | error | Bekannter Empfangs-/Medienfehler |
@@ -168,6 +169,22 @@ Die HLS-Ausgabe nutzt:
 
 Diese Ausgabegrenze beschränkt nicht automatisch Auflösung oder Codec
 des tatsächlich heruntergeladenen Quellstreams.
+
+## YouTube-Warteschlangen
+
+Ein HLS-Medienmanifest beschreibt nur die Abschnitte eines Videos. Für mehrere
+YouTube-Titel liefert die iPhone-App neue Wiedergabeaufträge. Der Empfänger
+verarbeitet `playlistInsert` über den normalen `/play`-Pfad und hält am
+natürlichen Titelende die Steuer-/PTTH-Verbindungen offen. Abschlussposition
+und Ende-Ereignisse bleiben verfügbar, während der Sender den Folgetitel
+vorbereitet. Rückkanal-Anfragen werden begrenzt gepuffert und erst nach
+vollständiger Bestätigung des vorherigen Requests gesendet.
+
+Ein Ladefehler, Stop oder „Zur Spiegelung“ darf nicht als natürliches
+Titelende gemeldet werden. „Zur Spiegelung“ bleibt auch in der Lücke zwischen
+zwei Titeln verfügbar und verwirft die ausstehende Fortsetzung. Die eigentliche
+Warteschlange und die Auswahl des nächsten Videos bleiben auf dem iPhone.
+[Bedienung und Fahrzeug-Testmatrix](PLAYLISTS.md).
 
 ## Frame-Transport
 

@@ -42,6 +42,12 @@ Dokumentation stehen auf main. Der Tag wird dafür nicht nachträglich verschobe
   Reine Bildschirmspiegelung lässt sich nicht in ein unabhängiges Video
   verwandeln, wenn die iPhone-App keinen AirPlay-Videostream sendet.
 
+- YouTube-Titelübergaben über `playlistInsert` und der Rückkanal-Abschluss
+  unterstützen sendergesteuertes Fortsetzen einer Playlist. Die Verbindung
+  wird am natürlichen Videoende erhalten; Pause, Fehler und ausdrückliches
+  Beenden lösen keinen normalen Ende-/Weiter-Handshake aus.
+  [Protokollpfad und Fahrzeugabnahme](PLAYLISTS.md).
+
 Beide Pakete auf 0.4.3 aktualisieren. Die neuen lokalen Regressionstests
 prüfen Startoptionen, Offline-/Online-Leasewechsel, Firewall-Wiederherstellung,
 Spiegelungsursprung und die nativen Stop-/Playlist-/Rückkehrpfade. Sie ersetzen

@@ -69,7 +69,13 @@ Die Prüfungen umfassen:
 - Erhalt des YouTube-FCUP-Pfades;
 - Ablehnen nicht unterstützter direkter Medien-URLs;
 - native Erkennung Spiegelung → HLS, Ignorieren von Telefon-Pause/Stop/HLS-TEARDOWN,
-  Erhalt der Playlist bei playlistRemove und Rückkehr über Ende/„Zur Spiegelung“.
+  Erhalt der Playlist bei playlistRemove und Rückkehr über Ende/„Zur Spiegelung“;
+- drei aufeinanderfolgende Titel über den tatsächlichen AirPlay-HTTP-Server,
+  `playlistInsert` und erhaltene Steuer-/Rückkanalverbindungen;
+- fragmentierte ACK-Header und ACK-Body ohne vorzeitiges Senden des nächsten
+  Ereignisses; weiter bedienbare Steuerverbindung während unvollständiger ACKs;
+- Endposition, Reihenfolge der Ende-Ereignisse, Wiederholung desselben Titels,
+  Abbruch, Wiederverbindung und Ablauf einer ausstehenden Bestätigung.
 
 test_video_sink.c deckt I420-Transport und Layout-/Stride-Fragen ab.
 Die zugehörigen Format-/Orientierungsprüfungen verwenden synthetische Frames.
@@ -118,6 +124,7 @@ SDK-Donor und das festgelegte öffentliche Kit.
 | Viele Stunden / viele Video-Wechsel / Kaltstart | Offen |
 | Erholung von echten Downloadfehlern ohne nativen Absturz | Bekannter offener Fehler |
 | Neue Store-Installation auf realer MGU | Offen |
+| 0.4.3: YouTube-Playlist mit mehreren Titeln automatisch fortsetzen | Drei Titel mit synthetischem Sender lokal geprüft, Fahrzeugabnahme offen |
 | 0.4.3: BMW-WLAN ohne iPhone-Hotspot, YouTube mit iPhone-Mobilfunk als Spiegelung | Lokale Startoptionen geprüft, Fahrzeugtest offen |
 | 0.4.3: Spiegelung → HLS, dann App-Wechsel/Sperren, mit eigenem MGU-Uplink | Native Regressionstests vorhanden, Fahrzeugtest offen |
 

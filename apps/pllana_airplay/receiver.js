@@ -30,7 +30,7 @@ class Receiver extends EventEmitter {
         this.dataDir = this.options.dataDir || process.cwd();
         this.child = null; this.stopTimer = null; this.poll = null; this.session = 0;
         this.stopPromise = null; this.closed = false;
-        this.state = { phase: 'stopped', mode: null, pin: '', frame: null, file: '', audio: false, error: null };
+        this.state = { phase: 'stopped', mode: null, playlistPending: false, pin: '', frame: null, file: '', audio: false, error: null };
     }
     update(fields) { Object.assign(this.state, fields); this.emit('state', Object.assign({}, this.state)); }
     // options.keepPassword: an automatic restart after a receiver failure keeps
@@ -97,7 +97,7 @@ class Receiver extends EventEmitter {
         try { child = this.spawn(launcher, args, { env, cwd: this.dataDir, detached: true, stdio: ['ignore', 'pipe', 'pipe'] }); }
         catch (e) { this.update({ phase: 'error', error: 'launch_failed', pin: '' }); return false; }
         this.child = child; this.features = {};
-        this.update({ phase: 'starting', directVideo, detached: false, mode: 'mirror', returnMode: 'waiting', pin, file, frame: null, error: null, audioError: null, audio: audio !== 'fakesink' });
+        this.update({ phase: 'starting', directVideo, detached: false, playlistPending: false, mode: 'mirror', returnMode: 'waiting', pin, file, frame: null, error: null, audioError: null, audio: audio !== 'fakesink' });
         // Node 8 has no ChildProcess "spawn" event. spawn() already returns
         // a pid on success; still handle its asynchronous error event below.
         if (child.pid) this.update({ phase: 'waiting' });
@@ -111,7 +111,7 @@ class Receiver extends EventEmitter {
                 const st = fs.lstatSync(file);
                 if (st.isFile() && !st.isSymbolicLink() && st.nlink === 1 && st.uid === uid) fs.unlinkSync(file);
             } catch (e) {}
-            this.update({ phase: error ? 'error' : 'stopped', mode: null, detached: false, pin: '', frame: null, file: '', error: error || null });
+            this.update({ phase: error ? 'error' : 'stopped', mode: null, detached: false, playlistPending: false, pin: '', frame: null, file: '', error: error || null });
             this.emit('ended');
         };
         child.once('error', () => finish('launch_failed'));
@@ -147,7 +147,7 @@ class Receiver extends EventEmitter {
                 if (line === 'MGU_CONN 0' && this.state.mode !== 'hls') {
                     hideOldFrame();
                     wasMirroring = false;
-                    this.update({ phase: 'waiting', frame: null, returnMode: 'waiting' });
+                    this.update({ phase: 'waiting', frame: null, playlistPending: false, returnMode: 'waiting' });
                 }
                 if (line === 'MGU_MODE waiting') {
                     hideOldFrame();
@@ -164,20 +164,25 @@ class Receiver extends EventEmitter {
                 // Runtime 0.4.2+: detached video (see airplay/tools/patch_detach.py).
                 if (line === 'MGU_FEATURES detach') this.features.detach = true;
                 if (line === 'MGU_FEATURES native-detach') this.features.nativeDetach = true;
-                if (line === 'MGU_MEDIA_DETACHED' && this.state.mode === 'hls') { this.update({ detached: true }); this.emit('diagnostic', 'video_detached_from_phone'); }
+                if (line === 'MGU_FEATURES playlist') this.features.playlist = true;
+                if (line === 'MGU_MEDIA_DETACHED' && this.state.mode === 'hls') { this.update({ detached: true, returnMode: 'mirror' }); this.emit('diagnostic', 'video_detached_from_phone'); }
                 if (line === 'MGU_PHONE_STOP_IGNORED' || line === 'MGU_PHONE_PAUSE_IGNORED') this.emit('diagnostic', line.toLowerCase());
+                if (line === 'MGU_MEDIA_ENDED') { this.update({ playlistPending: true }); this.emit('diagnostic', 'mgu_media_ended'); }
+                if (line === 'MGU_PLAYLIST_INSERT' || line === 'MGU_PLAYLIST_CANCELLED') {
+                    this.update({ playlistPending: false }); this.emit('diagnostic', line.toLowerCase());
+                }
                 if (line === 'MGU_MEDIA_REJECTED')
                     this.update({ phase: 'waiting', frame: null, error: 'media_unsupported' });
                 if (line === 'MGU_MEDIA_FAILED') {
                     hideOldFrame();
-                    this.update({ phase: 'waiting', frame: null, error: 'media_failed' });
+                    this.update({ phase: 'waiting', frame: null, playlistPending: false, error: 'media_failed' });
                 }
                 if (line === 'MGU_MODE hls' || line === 'MGU_MODE mirror') {
                     const mode = line.slice(9);
                     if (mode === 'mirror') { wasMirroring = true; blockedGeneration = null; }
                     else hideOldFrame();
                     this.update(Object.assign({ mode, returnMode: wasMirroring ? 'mirror' : 'waiting', error: null, detached: false },
-                        mode === 'hls' ? { phase: 'loading', frame: null } : {}));
+                        mode === 'hls' ? { phase: 'loading', frame: null, playlistPending: false } : {}));
                     this.emit('diagnostic', 'playback_mode_' + mode);
                     this.emit('media', mode);
                 }
@@ -226,7 +231,8 @@ class Receiver extends EventEmitter {
         this.signal(this.child, 'SIGUSR1'); return true;
     }
     resumeMirror() {
-        if (!this.child || !this.features || !this.features.detach || this.state.mode !== 'hls') return false;
+        if (!this.child || !this.features || !this.features.detach ||
+            (this.state.mode !== 'hls' && !(this.features.playlist && this.state.playlistPending))) return false;
         this.signal(this.child, 'SIGUSR2'); return true;
     }
     signal(child, signal) {
