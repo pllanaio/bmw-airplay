@@ -16,7 +16,7 @@ if (fs.existsSync(socketPath)) {
     if (!s.isSocket() || s.uid !== process.getuid()) throw Error('invalid_control_socket');
     fs.unlinkSync(socketPath);
 }
-const receiver = new Receiver({ dataDir: data, runtime: process.env.MGU_AIRPLAY_RUNTIME || '/var/opt/mgu-airplay/current/runtime', audioSink: AUDIO_SINK, authentication: 'password' });
+const receiver = new Receiver({ dataDir: data, runtime: process.env.MGU_AIRPLAY_RUNTIME || (fs.existsSync('/var/opt/pllana-airplay-receiver/current/runtime') ? '/var/opt/pllana-airplay-receiver/current/runtime' : '/var/opt/mgu-airplay/current/runtime'), audioSink: AUDIO_SINK, authentication: 'password' });
 const diagnostics = [];
 receiver.on('diagnostic', code => {
     diagnostics.push({ time: new Date().toISOString(), code });

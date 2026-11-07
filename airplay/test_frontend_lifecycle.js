@@ -11,10 +11,10 @@ const ctx={ui:{onClick:(id,fn)=>{clicks[id]=fn;},onVisible:fn=>visible.push(fn),
 const modules={path,'./kit/mgu':{run:app=>{started=app.start(ctx);}},'./backend_client':{BackendClient},
     './video_bridge':{VideoBridge:class{ready(){return true;} detach(){}}},
     './view':{drawHome(){}},'./logo_bridge':{LogoBridge:class{}},
-    './brand_logo':{register(){}},'./kit/record':{setImage(){}}};
+    './brand_logo':{register(){}},'./kit/record':{setImage(){}},'./diagnose':{diagnose:()=>''}};
 vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../apps/pllana_airplay/main.js'),'utf8'),{
     require:name=>{assert(modules[name],name);return modules[name];},
-    process:{on(){}},Date,Promise,console
+    process:{on(){},getuid:()=>12233},Date,Promise,console
 });
 Promise.resolve(started).then(async()=>{
     clicks.BTN_START();assert.strictEqual(receiver.starts,1);
