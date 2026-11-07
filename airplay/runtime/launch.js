@@ -35,8 +35,9 @@ function appUid() {
 }
 let version = '';
 try { version = JSON.parse(fs.readFileSync(path.join(BASE, 'runtime/build-manifest.json'), 'utf8')).version || ''; } catch (e) { /* none */ }
+let legacy = null;
 function status(state, extra) {
-    const record = Object.assign({ state, version, at: new Date().toISOString(), pid: process.pid }, extra || {});
+    const record = Object.assign({ state, version, at: new Date().toISOString(), pid: process.pid }, legacy ? { legacy } : {}, extra || {});
     try {
         try { fs.mkdirSync(STATUS_DIR, 0o755); } catch (e) { if (e.code !== 'EEXIST') throw e; }
         const st = fs.lstatSync(STATUS_DIR);
@@ -47,6 +48,33 @@ function status(state, extra) {
         fs.chmodSync(tmp, 0o644); fs.renameSync(tmp, STATUS);
     } catch (e) { console.error('status: ' + e.message); }
     console.log('AirPlay receiver: ' + state + (extra ? ' ' + JSON.stringify(extra) : ''));
+}
+
+// The older receiver runtime (privately deployed, or the 0.3.x Store tool)
+// is removed with the official deploy tool once this receiver runs. Its
+// unit's stop step deletes the shared "mgu-airplay" firewall rules, so they
+// are applied again for our app UID afterwards. One attempt per boot.
+const OLD_ID = 'mgu-airplay', DEPLOY = '/var/opt/mgu-deploy/mgu-deploy.sh', MARK = STATUS_DIR + '/legacy-removal.json';
+function removeLegacy(uid, io) {
+    io = io || { fs, cp };
+    if (!io.fs.existsSync('/var/opt/' + OLD_ID + '/current/component.json') || !io.fs.existsSync(DEPLOY) || io.fs.existsSync(MARK)) return false;
+    try { io.fs.writeFileSync(MARK, JSON.stringify({ at: new Date().toISOString() }) + '\n', { mode: 0o644 }); } catch (e) { return false; }
+    legacy = 'removing';
+    status('running', { uid });
+    // mgu-deploy waits for its own lock, so this never overlaps an install.
+    // A transient unit keeps the removal out of this service's cgroup: a
+    // receiver restart must not kill it half-way.
+    const transient = io.fs.existsSync('/usr/bin/systemd-run') || io.fs.existsSync('/bin/systemd-run');
+    const args = transient ? ['--unit=pllana-airplay-legacy-removal', '--wait', '/bin/sh', DEPLOY, 'uninstall', OLD_ID, '--yes']
+        : [DEPLOY, 'uninstall', OLD_ID, '--yes'];
+    const job = io.cp.spawn(transient ? 'systemd-run' : '/bin/sh', args, { stdio: 'inherit', detached: true });
+    job.on('error', () => { legacy = 'failed'; status('running', { uid }); });
+    job.on('exit', code => {
+        legacy = code === 0 ? 'removed' : 'failed: ' + code;
+        io.cp.spawnSync('/usr/bin/node', [path.join(BASE, 'network.js'), 'apply', String(uid)], { stdio: 'inherit', timeout: 20000 });
+        status('running', { uid });
+    });
+    return true;
 }
 
 let child = null, stopping = false, timer = null;
@@ -66,7 +94,13 @@ function start() {
         env: Object.assign({}, process.env, { HOME: home, MGU_AIRPLAY_RUNTIME: path.join(BASE, 'runtime') }),
     });
     const started = Date.now();
-    const running = setTimeout(() => { if (child) status('running', { uid, network: netError ? 'failed' : 'ok' }); }, 3000);
+    const running = setTimeout(() => {
+        if (!child) return;
+        status('running', { uid, network: netError ? 'failed' : 'ok' });
+        // Once the receiver is up, remove the old runtime (after the Store's
+        // own install run has ended; the deploy tool waits for its lock).
+        timer = setTimeout(() => { if (child && !stopping) removeLegacy(uid); }, 20000);
+    }, 3000);
     child.on('error', e => status('backend_launch_failed', { uid, error: e.message }));
     // systemd restarts the unit (and re-runs the UID lookup) when the backend ends.
     child.on('exit', (code, signal) => {
@@ -79,7 +113,7 @@ for (const sig of ['SIGTERM', 'SIGINT']) process.on(sig, () => {
     stopping = true; clearTimeout(timer); status('stopped');
     if (child) child.kill(sig); else process.exit(0);
 });
-module.exports = { parseUids };
+module.exports = { parseUids, removeLegacy };
 if (require.main === module) {
     if (process.getuid() !== 0) throw Error('root_supervisor_required');
     start();

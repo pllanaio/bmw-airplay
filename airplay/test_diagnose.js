@@ -14,3 +14,27 @@ const { parseUids } = require('./runtime/launch.js');
 assert.strictEqual(parseUids('12201=store\n13007=pllana_airplay\n'), 13007);
 assert.throws(() => parseUids('13007=pllana_airplay\n13008=pllana_airplay\n'));
 console.log('Receiver diagnostics and app UID lookup passed');
+// Old runtime removal: once per boot, through the deploy tool, then firewall again.
+{
+    const { removeLegacy } = require('./runtime/launch.js');
+    const EventEmitter = require('events');
+    const calls = [], files = new Set(['/var/opt/mgu-airplay/current/component.json', '/var/opt/mgu-deploy/mgu-deploy.sh', '/usr/bin/systemd-run']);
+    const fakeFs = { existsSync: f => files.has(f), writeFileSync: f => files.add(f) };
+    let job;
+    const fakeCp = { spawn: (cmd, args) => { calls.push([cmd].concat(args).join(' ')); job = new EventEmitter(); return job; },
+        spawnSync: (cmd, args) => { calls.push([cmd].concat(args).join(' ')); return { status: 0 }; } };
+    const statusFile = require('fs'); const write = statusFile.writeFileSync; statusFile.writeFileSync = () => {}; const ren = statusFile.renameSync; statusFile.renameSync = () => {};
+    const mk = statusFile.mkdirSync, ch = statusFile.chmodSync, ls = statusFile.lstatSync;
+    statusFile.mkdirSync = () => {}; statusFile.chmodSync = () => {}; statusFile.lstatSync = () => ({ isDirectory: () => true, isSymbolicLink: () => false, uid: 0 });
+    const log = console.log; console.log = () => {};
+    try {
+        assert.strictEqual(removeLegacy(13001, { fs: fakeFs, cp: fakeCp }), true);
+        assert(/^systemd-run --unit=pllana-airplay-legacy-removal --wait \/bin\/sh \/var\/opt\/mgu-deploy\/mgu-deploy.sh uninstall mgu-airplay --yes$/.test(calls[0]), calls[0]);
+        job.emit('exit', 0);
+        assert(/network\.js apply 13001$/.test(calls[1]), 'firewall applied again for the app UID');
+        assert.strictEqual(removeLegacy(13001, { fs: fakeFs, cp: fakeCp }), false, 'one attempt per boot');
+    } finally {
+        console.log = log; statusFile.writeFileSync = write; statusFile.renameSync = ren; statusFile.mkdirSync = mk; statusFile.chmodSync = ch; statusFile.lstatSync = ls;
+    }
+    console.log('Old runtime removal through the deploy tool passed');
+}
