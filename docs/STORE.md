@@ -1,5 +1,19 @@
 # MGU-Store-Anbindung
 
+## Fehlerbehebung: Update über den Store schlug fehl (behoben in 0.3.0)
+
+Der Store baut das Frontend auf der Headunit mit `tools/build_store.py`.
+Der Build verglich die Prüfsumme des mitgelieferten Schriftatlas
+(`assets/fonts/airplay.json`) mit `atlas-manifest.json`. Beide passten nicht
+zusammen, daher brach jeder Store-Build mit „Prebaked font atlas checksum
+differs“ ab. Das Manifest ist korrigiert; der vollständige Store-Build wurde
+lokal als unprivilegierter Benutzer mit dem festgelegten Kit-Stand geprüft.
+
+Weiterhin gilt: Das Frontend setzt die separat installierte Laufzeit
+`mgu-airplay` (mindestens 0.2.4) voraus. Der Store erkennt sie an
+`/var/opt/mgu-airplay/current/component.json`. Die App 0.3.0 läuft mit
+Laufzeit 0.2.4; die nativen Verbesserungen kommen mit Laufzeit 0.3.0.
+
 ## Was jetzt vorhanden ist
 
 Die Datei mgu-repo.json im Repository-Stamm folgt dem Repo-Tree-/apps-

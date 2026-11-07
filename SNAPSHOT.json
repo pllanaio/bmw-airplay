@@ -28,7 +28,7 @@
     "airplay/native/test_hls_lifecycle.c": "9b327c9f861ed59762e8cfec9738fb15b644b0d1f090a5a59f217baf680cfef8",
     "airplay/native/test_hls_output.c": "ea22cbed77e3a09626c109f6f0519100318bc72724459dce5f2b580bee78c45f",
     "airplay/native/test_hls_routes.c": "cb72b8b56facdb2c238278cee17e8c75c6dfca816e7ccd893a0b850faa97b14e",
-    "airplay/native/test_video_sink.c": "5eb38207488a122c1dbf771d3c7102b94ee9b552f5b4dd0f1c87d0684d20f463"
+    "airplay/native/test_video_sink.c": "c2abdba600a0a0e7dcbf47d2b136f2b2bf6f0382b9851aa076c3a022cc92ab64"
   },
   "export_tooling_changes": [
     "Portable explicit SSH configuration",
