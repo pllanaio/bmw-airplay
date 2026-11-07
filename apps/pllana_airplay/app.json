@@ -1,0 +1,23 @@
+{
+  "id": "pllana_airplay",
+  "title": "BMW AirPlay by pllana.io",
+  "description": "BMW AirPlay von Leon Pllana IT-Solutions · pllana.io",
+  "version": "0.2.6",
+  "vendor": "Leon Pllana IT-Solutions",
+  "loggingId": "OAA1",
+  "maxDiskUsage": 67108864,
+  "memoryKB": 196608,
+  "iconGlyph": "WEB",
+  "signals": {
+    "org.genivi.am.commandinterface.CommandControl": {
+      "_instances": "1",
+      "_methods": ["getListMainSources", "getListMainSinks", "getListMainConnections", "connect", "disconnect"]
+    }
+  },
+  "screens": [{
+    "name": "MAIN", "kind": "canvas", "title": "BMW AirPlay by pllana.io", "bar": true,
+    "buttons": [["BTN_START", "Verbinden"], ["BTN_STOP", "Trennen"], ["BTN_CLOSE", "Schließen"]]
+  }],
+  "settings": [],
+  "config": {}
+}

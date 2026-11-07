@@ -1,0 +1,62 @@
+'use strict';
+const assert = require('assert'), fs = require('fs'), os = require('os'), path = require('path');
+const EventEmitter = require('events');
+const { Receiver } = require('../apps/pllana_airplay/receiver');
+(async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'airplay-receiver-test-'));
+    const calls = [];
+    const r = new Receiver({ dataDir: dir, audioSink: 'fakesink', skipRuntimeCheck: true, spawn: (bin, args, options) => {
+        const child = new EventEmitter(); child.pid = 900000 + calls.length;
+        child.stdout = new EventEmitter(); child.stderr = new EventEmitter();
+        calls.push({ args, child, options }); return child;
+    } });
+    r.signal = child => setImmediate(() => child.emit('close', 0));
+    try {
+        assert(r.start()); assert.strictEqual(r.state.phase, 'waiting', 'works without Node-15 spawn event');
+        assert(calls[0].args.includes('-hls'), 'advertise the actual HLS player');
+        assert.strictEqual(calls[0].args[calls[0].args.indexOf('-hls') + 1], '2', 'use legacy HLS parser for YouTube codec negotiation');
+        assert.strictEqual(calls[0].args[calls[0].args.indexOf('-n') + 1], 'BMW AirPlay by pllana.io');
+        assert.strictEqual(calls[0].options.env.MGU_HLS_AUDIO_SINK, 'fakesink');
+        assert(!r.start(), 'no overlapping receiver');
+        const mac = calls[0].args[calls[0].args.indexOf('-m') + 1];
+        const events = [];
+        r.on('diagnostic', code => events.push(code));
+        calls[0].child.stdout.emit('data', '*** CLIENT MUST NOW ENTER PIN = "1234" AS AIRPLAY PASSWORD\n');
+        assert.strictEqual(r.state.pin, '1234', 'screen follows actual native PIN');
+        assert(events.every(code => code.indexOf('1234') < 0), 'diagnostics exclude PIN values');
+        calls[0].child.stderr.emit('data', 'MGU_CRASH\n/tmp/uxplay(+0xabcd)[0xdeadbeef]\n');
+        assert(events.includes('/tmp/uxplay(+0xabcd)[0xdeadbeef]'), 'native backtrace addresses do not contain a mandatory space');
+        await r.stop(); assert.strictEqual(r.state.phase, 'stopped');
+        assert(r.start());
+        assert.strictEqual(calls[1].args[calls[1].args.indexOf('-m') + 1], mac, 'receiver identity survives sessions');
+        assert(calls[1].args.includes('-reg'));
+        await r.destroy(); assert(!r.start());
+        const p = new Receiver(Object.assign({}, r.options, { authentication: 'password' }));
+        p.signal = child => setImmediate(() => child.emit('close', 0));
+        assert(p.start());
+        const passwordArgs = calls[2].args;
+        assert(/^[0-9]{6}$/.test(p.state.pin));
+        assert.strictEqual(passwordArgs[passwordArgs.indexOf('-pw') + 1], p.state.pin);
+        assert(!passwordArgs.includes('-pin'), 'standard password auth is separate from legacy PIN pairing');
+        const password = p.state.pin, child = p.child;
+        child.stdout.emit('data', 'MGU_MODE hls\n');
+        assert.strictEqual(p.state.phase, 'loading');
+        assert.strictEqual(p.state.returnMode, 'waiting', 'direct video returns to waiting');
+        child.stdout.emit('data', 'MGU_MODE waiting\n');
+        assert.strictEqual(p.state.phase, 'waiting');
+        child.stdout.emit('data', 'MGU_MODE mirror\nMGU_MODE hls\n');
+        assert.strictEqual(p.state.returnMode, 'mirror', 'video entered from mirroring remembers origin');
+        p.update({ frame: {sequence: 123} });
+        child.stdout.emit('data', 'MGU_MODE hls\n');
+        assert.strictEqual(p.state.frame, null, 'new content clears previous frozen frame');
+        child.stdout.emit('data', 'MGU_MODE waiting\n');
+        assert.strictEqual(p.child, child, 'media mode switches preserve native receiver');
+        assert.strictEqual(p.state.pin, password, 'media mode switches preserve password');
+        await p.destroy();
+        console.log('Node-8 startup, PIN synchronization, stable identity and stop lifecycle passed');
+    } finally {
+        await r.destroy();
+        for (const name of fs.readdirSync(dir)) fs.unlinkSync(path.join(dir, name));
+        fs.rmdirSync(dir);
+    }
+})().catch(e => { console.error(e); process.exit(1); });

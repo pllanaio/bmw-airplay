@@ -1,0 +1,21 @@
+'use strict';
+const assert = require('assert');
+const { VideoBridge } = require('../apps/pllana_airplay/video_bridge');
+const messages = [];
+const gpu = { ready: true, native: true, info: { video: true }, sock: {},
+    placement: { w: 1920, h: 600, scale: 1 }, _write: b => messages.push(b.readUInt32LE(0)) };
+const bridge = new VideoBridge({ gpu });
+assert(bridge.attach('/dev/shm/mgu-video-test', '1:42'));
+bridge.attach('/dev/shm/mgu-video-test', '1:42');
+assert.deepStrictEqual(messages, [13], 'stable frames do not reopen the native transport');
+bridge.attach('/dev/shm/mgu-video-test', '1:43');
+assert.deepStrictEqual(messages, [13, 13], 'HLS file replacement reopens its new inode');
+gpu.placement.h = 520;
+bridge.attach('/dev/shm/mgu-video-test', '1:43');
+assert.strictEqual(messages.length, 3, 'layout resize redefines discarded video');
+gpu.sock = {};
+bridge.attach('/dev/shm/mgu-video-test', '1:43');
+assert.strictEqual(messages.length, 4, 'renderer reconnect redefines video');
+bridge.detach();
+assert.strictEqual(messages[4], 14);
+console.log('Video transport replacement, layout resize and reconnect passed');

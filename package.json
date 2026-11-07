@@ -1,0 +1,10 @@
+{
+  "name": "bmw-airplay-by-pllana-io",
+  "version": "0.2.6",
+  "private": true,
+  "description": "Experimental native BMW MGU AirPlay receiver by Leon Pllana IT-Solutions",
+  "license": "UNLICENSED",
+  "scripts": {
+    "test": "node airplay/test_audio_route.js && node airplay/test_backend.js && node airplay/test_receiver.js && node airplay/test_frontend_lifecycle.js && node airplay/test_video_bridge.js && node airplay/test_logo_bridge.js"
+  }
+}

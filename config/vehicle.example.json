@@ -1,0 +1,7 @@
+{
+  "host": "192.0.2.10",
+  "user": "root",
+  "identityFile": "~/.ssh/id_ed25519",
+  "knownHostsFile": "~/.ssh/known_hosts",
+  "port": 22
+}
