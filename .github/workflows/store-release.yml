@@ -32,7 +32,7 @@ jobs:
             ca-certificates git python3 nodejs build-essential cmake ninja-build pkg-config \
             libssl-dev libplist-dev libglib2.0-dev libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev \
             gstreamer1.0-tools gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-plugins-bad \
-            gstreamer1.0-libav gstreamer1.0-alsa libsoup-3.0-0 glib-networking file
+            gstreamer1.0-libav gstreamer1.0-alsa gstreamer1.0-x libsoup-3.0-0 glib-networking file
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
           persist-credentials: false
