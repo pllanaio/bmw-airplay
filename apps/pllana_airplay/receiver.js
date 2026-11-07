@@ -11,6 +11,21 @@ function emptyMusic() {
         controls: { playPause: false, next: false, previous: false, shuffle: false, repeat: false } };
 }
 
+function liveProcessGroup(pid) {
+    try { process.kill(-pid, 0); }
+    catch (e) { if (e.code === 'ESRCH') return false; throw e; }
+    // A launcher can exit before a descendant that closed its inherited
+    // pipes. Zombies retain a group number but cannot retain phone sockets.
+    return fs.readdirSync('/proc').some(name => {
+        if (!/^[0-9]+$/.test(name)) return false;
+        try {
+            const stat = fs.readFileSync('/proc/' + name + '/stat', 'utf8');
+            const fields = stat.slice(stat.lastIndexOf(')') + 1).trim().split(/\s+/);
+            return Number(fields[2]) === pid && fields[0] !== 'Z' && fields[0] !== 'X';
+        } catch (e) { if (e.code === 'ENOENT' || e.code === 'ESRCH') return false; throw e; }
+    });
+}
+
 function frameHeader(file) {
     let fd;
     try {
@@ -34,20 +49,20 @@ class Receiver extends EventEmitter {
         this.spawn = this.options.spawn || childProcess.spawn;
         this.runtime = this.options.runtime || path.join(__dirname, 'runtime');
         this.dataDir = this.options.dataDir || process.cwd();
-        this.child = null; this.stopTimer = null; this.poll = null; this.session = 0;
-        this.stopPromise = null; this.closed = false;
+        this.child = null; this.stopTimer = null; this.stopFailTimer = null; this.poll = null; this.session = 0;
+        this.stopPromise = null; this.closed = false; this.stoppingChild = null; this.closedChild = null;
         this.musicDirectory = ''; this.musicPoll = null;
-        this.state = { phase: 'stopped', profile: 'video', mode: null, origin: null, supportsVideoStop: false, playlistPending: false, music: null, pin: '', frame: null, file: '', audio: false, error: null };
+        this.state = { phase: 'stopped', profile: 'auto', mode: null, origin: null, supportsVideoStop: false, supportsAutomaticMedia: false, playlistPending: false, music: null, pin: '', frame: null, file: '', audio: false, error: null };
     }
     update(fields) { Object.assign(this.state, fields); this.emit('state', Object.assign({}, this.state)); }
     // options.keepPassword: an automatic restart after a receiver failure keeps
     // the password the iPhone already knows, so it can reconnect at once.
     start(options) {
-        if (this.closed || this.child || this.stopPromise) return false;
+        if (this.closed || this.child || this.stopPromise || this.stoppingChild) return false;
         let profile = options && options.profile;
         if (profile === undefined) profile = typeof this.options.profile === 'function' ? this.options.profile() : this.options.profile;
-        if (profile === undefined) profile = 'video';
-        if (profile !== 'video' && profile !== 'audio') {
+        if (profile === undefined) profile = 'auto';
+        if (profile !== 'auto' && profile !== 'video' && profile !== 'audio') {
             this.update({ phase: 'error', error: 'invalid_profile', pin: '' }); return false;
         }
         const launcher = path.join(this.runtime, 'bin/airplay-launch');
@@ -77,17 +92,17 @@ class Receiver extends EventEmitter {
         const register = path.join(this.dataDir, 'trusted-clients');
         if (!fs.existsSync(register)) fs.writeFileSync(register, '', { mode: 0o600, flag: 'wx' });
         const uid = process.getuid ? process.getuid() : 0;
-        const file = profile === 'video' ? '/dev/shm/mgu-video-airplay-' + uid + '-' + process.pid + '-' + (++this.session) : '';
+        const file = profile !== 'audio' ? '/dev/shm/mgu-video-airplay-' + uid + '-' + process.pid + '-' + (++this.session) : '';
         const audio = this.options.audioSink;
         if (!audio) { this.update({ phase: 'error', error: 'audio_not_configured' }); return false; }
         // Without receiver Internet, YouTube must keep sending mirrored
         // pixels over the BMW WLAN instead of handing us unreachable CDN URLs.
         // Decide per session; never restart an active stream on a lease change.
-        const directVideo = profile === 'video' && (typeof this.options.hls === 'function' ? this.options.hls() : this.options.hls !== false);
+        const directVideo = profile !== 'audio' && (typeof this.options.hls === 'function' ? this.options.hls() : this.options.hls !== false);
         const access = passwordMode ? ['-pw', pin] : ['-pin', pin, '-reg', register];
         const args = [loader, '--library-path', path.join(this.runtime, 'lib'), uxplay,
             '-n', 'BMW AirPlay by pllana.io', '-nh', '-m', device].concat(access)
-            .concat(profile === 'video' ? ['-s', '1280x720@30', '-fps', '30', '-avdec'] : [])
+            .concat(profile !== 'audio' ? ['-s', '1280x720@30', '-fps', '30', '-avdec'] : [])
             .concat(directVideo ? ['-hls', '2', '-lang', '0'] : [])
             .concat(['-vs', profile === 'audio' ? '0' : 'mguvideosink location=' + file, '-as', audio, '-p', '7100']);
         const env = Object.assign({}, process.env, {
@@ -105,9 +120,10 @@ class Receiver extends EventEmitter {
             G_TLS_CA_FILE: path.join(this.runtime, 'etc/ca-certificates.crt'),
             SSL_CERT_FILE: path.join(this.runtime, 'etc/ca-certificates.crt'),
             MGU_AUDIO_ONLY: profile === 'audio' ? '1' : '0',
+            MGU_AUTO_MEDIA: profile === 'auto' ? '1' : '0',
         });
         let metadata = null, metadataEnv = null;
-        if (profile === 'audio') {
+        if (profile !== 'video') {
             try {
                 metadata = this.options.metadataFactory ? this.options.metadataFactory(this.dataDir, this.runtime) :
                     new AudioMetadata(this.dataDir, { runtime: this.runtime, env });
@@ -122,9 +138,9 @@ class Receiver extends EventEmitter {
         let child;
         try { child = this.spawn(launcher, args, { env, cwd: this.dataDir, detached: true, stdio: ['ignore', 'pipe', 'pipe'] }); }
         catch (e) { if (metadata) metadata.close(); this.update({ phase: 'error', error: 'launch_failed', pin: '' }); return false; }
-        this.child = child; this.features = {};
+        this.child = child; this.closedChild = null; this.features = {};
         this.musicDirectory = metadataEnv && metadataEnv.MGU_MUSIC_DIR || '';
-        this.update({ phase: 'starting', profile, directVideo, origin: null, supportsVideoStop: false, detached: false, playlistPending: false, music: profile === 'audio' ? emptyMusic() : null, mode: profile === 'audio' ? 'audio' : 'mirror', returnMode: 'waiting', pin, file, frame: null, error: null, audioError: null, audio: audio !== 'fakesink' });
+        this.update({ phase: 'starting', profile, directVideo, origin: null, supportsVideoStop: false, supportsAutomaticMedia: false, detached: false, playlistPending: false, music: profile !== 'video' ? emptyMusic() : null, mode: profile === 'audio' ? 'audio' : 'waiting', returnMode: 'waiting', pin, file, frame: null, error: null, audioError: null, audio: audio !== 'fakesink' });
         this.emit('music-directory', this.musicDirectory);
         // Node 8 has no ChildProcess "spawn" event. spawn() already returns
         // a pid on success; still handle its asynchronous error event below.
@@ -132,8 +148,12 @@ class Receiver extends EventEmitter {
         let ended = false;
         const finish = (error) => {
             if (ended) return; ended = true;
-            clearInterval(this.poll); clearInterval(this.musicPoll); clearTimeout(this.stopTimer);
-            this.poll = this.musicPoll = null; this.stopTimer = null;
+            clearInterval(this.poll); clearInterval(this.musicPoll);
+            this.poll = this.musicPoll = null;
+            if (this.stoppingChild !== child) {
+                clearTimeout(this.stopTimer); clearTimeout(this.stopFailTimer);
+                this.stopTimer = this.stopFailTimer = null;
+            }
             if (this.child === child) this.child = null;
             if (metadata) metadata.close();
             this.musicDirectory = ''; this.emit('music-directory', '');
@@ -141,11 +161,17 @@ class Receiver extends EventEmitter {
                 const st = fs.lstatSync(file);
                 if (st.isFile() && !st.isSymbolicLink() && st.nlink === 1 && st.uid === uid) fs.unlinkSync(file);
             } catch (e) {}
-            this.update({ phase: error ? 'error' : 'stopped', mode: null, origin: null, supportsVideoStop: false, detached: false, playlistPending: false, music: null, pin: '', frame: null, file: '', error: error || null });
+            this.update({ phase: error ? 'error' : 'stopped', mode: null, origin: null, supportsVideoStop: false, supportsAutomaticMedia: false, detached: false, playlistPending: false, music: null, pin: '', frame: null, file: '', error: error || null });
             this.emit('ended');
         };
-        child.once('error', () => finish('launch_failed'));
+        child.once('error', () => {
+            // A failed signal can emit error on a live child. Its sockets are
+            // closed only once Node has reaped the process and its pipes.
+            if (!child.pid) finish('launch_failed');
+            else this.emit('diagnostic', 'receiver_process_error');
+        });
         child.once('close', (code, signal) => {
+            this.closedChild = child;
             if (this.state.phase !== 'stopping') this.emit('diagnostic', 'receiver_exit_' + (signal || code));
             finish((code || signal) && this.state.phase !== 'stopping' ? 'receiver_failed' : null);
         });
@@ -179,16 +205,23 @@ class Receiver extends EventEmitter {
                 if (line === 'MGU_FEATURES media-stop') { this.features.mediaStop = true; this.update({ supportsVideoStop: true }); }
                 if (line === 'MGU_FEATURES playlist') this.features.playlist = true;
                 if (line === 'MGU_FEATURES audio-only') this.features.audioOnly = true;
-                if (profile === 'audio' && line === 'MGU_MODE audio') this.update({ mode: 'audio', frame: null });
-                if (profile === 'audio' && line === 'MGU_AUDIO_PLAY') {
+                if (line === 'MGU_FEATURES auto-media') { this.features.autoMedia = true; this.update({ supportsAutomaticMedia: true }); }
+                if (profile !== 'video' && line === 'MGU_MODE audio') {
+                    hideOldFrame(); wasMirroring = false; nativeOrigin = null;
+                    this.update({ phase: 'waiting', mode: 'audio', origin: null, returnMode: 'waiting', frame: null, playlistPending: false });
+                }
+                if (profile !== 'video' && line === 'MGU_AUDIO_PLAY') {
                     this.update({ phase: 'audio', mode: 'audio', frame: null, error: null });
                     this.emit('media', 'audio');
                 }
-                if (profile === 'audio' && (line === 'MGU_AUDIO_WAITING' || line === 'MGU_CONN 0'))
+                if (profile !== 'video' && this.state.mode === 'audio' && (line === 'MGU_AUDIO_WAITING' || line === 'MGU_CONN 0'))
                     this.update({ phase: 'waiting', mode: 'audio', frame: null });
                 // An audio profile never exposes video transitions or frames,
                 // even if an older runtime still prints its video-mode markers.
                 if (profile === 'audio' && /^(?:MGU_MODE (?:hls|mirror|waiting)|MGU_MEDIA_|MGU_ORIGIN |MGU_RETURN )/.test(line)) continue;
+                // A renderer rebuild may finish after a standalone audio
+                // handoff. Only accepted video can leave that audio mode.
+                if (profile === 'auto' && this.state.mode === 'audio' && /^(?:MGU_MODE waiting|MGU_RETURN (?:mirror|waiting))$/.test(line)) continue;
                 if (line === 'MGU_ORIGIN mirror' || line === 'MGU_ORIGIN direct') {
                     nativeOrigin = line.slice(11);
                     this.update({ origin: nativeOrigin, returnMode: nativeOrigin === 'mirror' ? 'mirror' : 'waiting', detached: false });
@@ -200,7 +233,7 @@ class Receiver extends EventEmitter {
                 }
                 // HLS fetches media independently. Losing the phone's last
                 // control/mirror socket must not blank a still-running video.
-                if (profile === 'video' && line === 'MGU_CONN 0' && this.state.mode !== 'hls') {
+                if (profile !== 'audio' && line === 'MGU_CONN 0' && this.state.mode !== 'hls' && this.state.mode !== 'audio') {
                     hideOldFrame();
                     wasMirroring = false;
                     this.update({ phase: 'waiting', frame: null, playlistPending: false, returnMode: 'waiting' });
@@ -214,7 +247,8 @@ class Receiver extends EventEmitter {
                 }
                 if (line === 'MGU_MEDIA_LOADING') {
                     hideOldFrame();
-                    this.update({ phase: 'loading', frame: null, error: null });
+                    this.update(Object.assign({ phase: 'loading', frame: null, error: null },
+                        profile === 'auto' && this.state.mode === 'audio' ? { mode: 'hls' } : {}));
                 }
                 if (line === 'MGU_MEDIA_PLAY') this.emit('media', 'hls');
                 // Older runtimes used this marker for detached mirror-origin
@@ -267,8 +301,8 @@ class Receiver extends EventEmitter {
         if (child.stderr) child.stderr.on('data', consume);
         child.once('spawn', () => { if (this.child === child && this.state.phase === 'starting') this.update({ phase: 'waiting' }); });
         let lastSequence = '';
-        if (profile === 'video') this.poll = setInterval(() => {
-            if (this.child !== child || this.state.phase === 'stopping') return;
+        if (profile !== 'audio') this.poll = setInterval(() => {
+            if (this.child !== child || this.state.phase === 'stopping' || this.state.mode === 'audio') return;
             const frame = frameHeader(file);
             if (frame && frame.generation === blockedGeneration) return;
             const key = frame && [frame.generation, frame.sequence, frame.width, frame.height].join(':');
@@ -302,31 +336,61 @@ class Receiver extends EventEmitter {
         this.signal(this.child, 'SIGUSR1'); return true;
     }
     endVideo() {
-        if (!this.child || this.state.profile !== 'video' || !this.features || !this.features.mediaStop ||
+        if (!this.child || this.state.profile === 'audio' || !this.features || !this.features.mediaStop ||
             (this.state.mode !== 'hls' && this.state.phase !== 'loading' && !this.state.playlistPending)) return false;
         this.signal(this.child, 'SIGWINCH'); return true;
     }
     resumeMirror() {
-        if (!this.child || this.state.profile !== 'video' || !this.features || !this.features.detach ||
+        if (!this.child || this.state.profile === 'audio' || !this.features || !this.features.detach ||
             (this.state.mode !== 'hls' && !(this.features.playlist && this.state.playlistPending))) return false;
         this.signal(this.child, 'SIGUSR2'); return true;
     }
     signal(child, signal) {
-        if (!child || child !== this.child || !child.pid) return;
+        if (!child || (child !== this.child && child !== this.stoppingChild) || !child.pid) return;
         try { process.kill(-child.pid, signal); }
-        catch (e) { if (e.code !== 'ESRCH') { try { child.kill(signal); } catch (ignore) {} } }
+        catch (e) { try { child.kill(signal); } catch (ignore) {} }
     }
     stop() {
         if (this.stopPromise) return this.stopPromise;
-        const child = this.child;
+        const child = this.child || this.stoppingChild;
         if (!child) return Promise.resolve();
+        this.stoppingChild = child;
         this.update({ phase: 'stopping', pin: '', frame: null });
-        this.stopPromise = new Promise(resolve => {
-            this.once('ended', () => { this.stopPromise = null; resolve(); });
-            this.signal(child, 'SIGTERM');
+        const pending = new Promise((resolve, reject) => {
+            let groupPoll = null;
+            const cleanup = () => {
+                child.removeListener('close', closed);
+                clearTimeout(this.stopTimer); clearTimeout(this.stopFailTimer); clearTimeout(groupPoll);
+                this.stopTimer = this.stopFailTimer = null;
+            };
+            const fail = () => {
+                cleanup(); this.update({ error: 'receiver_stop_failed' });
+                this.emit('diagnostic', 'receiver_stop_failed'); reject(Error('receiver_stop_failed'));
+            };
+            const drained = () => {
+                try {
+                    if (child.pid && liveProcessGroup(child.pid)) {
+                        groupPoll = setTimeout(drained, 25); return;
+                    }
+                } catch (e) { fail(); return; }
+                cleanup(); this.stoppingChild = null; resolve();
+            };
+            const closed = () => {
+                try {
+                    if (child.pid && liveProcessGroup(child.pid)) this.signal(child, 'SIGKILL');
+                } catch (e) { fail(); return; }
+                drained();
+            };
+            child.once('close', closed);
             this.stopTimer = setTimeout(() => this.signal(child, 'SIGKILL'), 3000);
+            this.stopFailTimer = setTimeout(fail, 5000);
+            this.signal(child, 'SIGTERM');
+            if (this.closedChild === child) closed();
         });
-        return this.stopPromise;
+        this.stopPromise = pending;
+        const finished = () => { if (this.stopPromise === pending) this.stopPromise = null; };
+        pending.then(finished, finished);
+        return pending;
     }
     destroy() { this.closed = true; return this.stop(); }
 }

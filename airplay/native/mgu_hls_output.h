@@ -14,15 +14,13 @@ static void mgu_hls_output(GstElement *player) {
     GstElement *audio = gst_parse_bin_from_description(description, TRUE, &error);
     if (error || !audio) g_error("MGU HLS audio pipeline could not be created");
     g_object_set(player, "audio-sink", audio, NULL);
-    /* Fill the HU's 1920x504 video surface. Crop centrally at the source
-       aspect before scaling; baking a 16:9 letterbox into each frame would
-       leave permanent bars even when the renderer uses a cover crop.
-       Explicit raw input caps let aspectratiocrop link before playbin has
-       connected its decoded source. One combined convert+scale pass keeps the
-       output near the previous 720p pixel budget (968k versus 922k pixels). */
+    /* Fill the HU's 1920x504 video surface while keeping the entire source.
+       The user selected non-proportional scaling: stretch/squash the picture
+       to the screen aspect, with no crop or receiver-added letterbox. Fixed
+       square pixels plus add-borders=false make both axes scale independently.
+       One convert+scale pass keeps the output near the previous 720p budget. */
     GstElement *filter = gst_parse_bin_from_description(
         "queue max-size-buffers=3 max-size-bytes=0 max-size-time=0 leaky=no ! video/x-raw ! "
-        "aspectratiocrop aspect-ratio=80/21 ! "
         "videoconvertscale add-borders=false n-threads=2 dither=none method=bilinear ! "
         "capsfilter caps=\"video/x-raw,format=I420,width=1920,height=504,pixel-aspect-ratio=1/1\"",
         TRUE, &error);

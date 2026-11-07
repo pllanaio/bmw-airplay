@@ -1,5 +1,5 @@
 'use strict';
-const assert = require('assert'), fs = require('fs'), os = require('os'), path = require('path');
+const assert = require('assert'), fs = require('fs'), os = require('os'), path = require('path'), vm = require('vm');
 const EventEmitter = require('events');
 const { Receiver } = require('../apps/pllana_airplay/receiver');
 (async () => {
@@ -13,6 +13,8 @@ const { Receiver } = require('../apps/pllana_airplay/receiver');
     r.signal = child => setImmediate(() => child.emit('close', 0));
     try {
         assert(r.start()); assert.strictEqual(r.state.phase, 'waiting', 'works without Node-15 spawn event');
+        assert.strictEqual(r.state.profile, 'auto', 'automatic audio/video recognition is the default');
+        assert.strictEqual(calls[0].options.env.MGU_AUTO_MEDIA, '1');
         assert(calls[0].args.includes('-hls'), 'advertise the actual HLS player');
         assert.strictEqual(calls[0].args[calls[0].args.indexOf('-hls') + 1], '2', 'use legacy HLS parser for YouTube codec negotiation');
         assert.strictEqual(calls[0].args[calls[0].args.indexOf('-n') + 1], 'BMW AirPlay by pllana.io');
@@ -209,9 +211,73 @@ const { Receiver } = require('../apps/pllana_airplay/receiver');
         assert(p.start({ profile: 'video', keepPassword: true }));
         assert.strictEqual(p.state.profile, 'video');
         assert.strictEqual(calls[calls.length - 1].options.env.MGU_AUDIO_ONLY, '0');
+        assert.strictEqual(calls[calls.length - 1].options.env.MGU_AUTO_MEDIA, '0', 'forced video remains available for compatibility');
         assert(p.poll, 'returning to video restores frame polling');
+        await p.stop();
+        assert(p.start({ profile: 'auto', keepPassword: true }));
+        const automaticChild=p.child, automaticPin=p.state.pin, automaticCall=calls[calls.length-1];
+        assert.strictEqual(automaticCall.options.env.MGU_AUTO_MEDIA,'1');
+        assert.strictEqual(automaticCall.options.env.MGU_AUDIO_ONLY,'0');
+        assert(automaticCall.args.includes('-hls') && p.poll && p.musicPoll && p.musicDirectory,
+            'automatic reception prepares both video transport and private music metadata');
+        const frame=Buffer.alloc(64+16*16*3/2);
+        frame.writeUInt32LE(0x4656474d,0); frame.writeUInt32LE(1,4);
+        frame.writeUInt32LE(16,8); frame.writeUInt32LE(16,12); frame.writeUInt32LE(1,16); frame.writeUInt32LE(1,24);
+        fs.writeFileSync(p.state.file,frame,{mode:0o600});
+        automaticChild.stdout.emit('data','MGU_FEATURES auto-media\nMGU_MODE mirror\n');
+        assert.strictEqual(p.state.supportsAutomaticMedia,true);
+        await new Promise(resolve=>setTimeout(resolve,150));
+        assert.strictEqual(p.state.phase,'mirroring');
+        automaticChild.stdout.emit('data','MGU_MODE audio\nMGU_AUDIO_PLAY\n');
+        frame.writeUInt32LE(2,16); fs.writeFileSync(p.state.file,frame);
+        await new Promise(resolve=>setTimeout(resolve,150));
+        assert.strictEqual(p.state.phase,'audio'); assert.strictEqual(p.state.frame,null,
+            'a cached or late video frame cannot overwrite active standalone audio');
+        assert.strictEqual(p.state.origin,null);
+        automaticChild.stdout.emit('data','MGU_AUDIO_WAITING\nMGU_MODE waiting\nMGU_RETURN waiting\n');
+        await new Promise(resolve=>setTimeout(resolve,150));
+        assert.strictEqual(p.state.mode,'audio','late renderer rebuild markers cannot leave paused audio');
+        assert.strictEqual(p.state.phase,'waiting'); assert.strictEqual(p.state.frame,null);
+        automaticChild.stdout.emit('data','MGU_MODE mirror\n');
+        frame.writeUInt32LE(3,16); fs.writeFileSync(p.state.file,frame);
+        await new Promise(resolve=>setTimeout(resolve,150));
+        assert.strictEqual(p.state.mode,'mirror'); assert.strictEqual(p.state.phase,'mirroring');
+        automaticChild.stdout.emit('data','MGU_MODE audio\nMGU_AUDIO_PLAY\nMGU_ORIGIN direct\nMGU_MEDIA_LOADING\n');
+        assert.strictEqual(p.state.phase,'loading'); assert.strictEqual(p.state.mode,'hls',
+            'an accepted direct video immediately leaves the music presentation during loading');
+        automaticChild.stdout.emit('data','MGU_MODE hls\nMGU_AUDIO_WAITING\n');
+        assert.strictEqual(p.state.mode,'hls','a stale audio flush cannot blank accepted video');
+        assert.strictEqual(p.child,automaticChild); assert.strictEqual(p.state.pin,automaticPin,
+            'automatic media transitions preserve the process and pairing password');
         await p.destroy();
-        console.log('Node-8 receiver startup, origin-aware video stop/return, audio-only profile, stable identity and stop lifecycle passed');
+        // Exercise failure deadlines deterministically. A missing process
+        // group must still signal the direct child, and neither error nor
+        // SIGKILL dispatch proves that Node has observed actual closure.
+        const deadlines=[], signals=[];
+        const isolated={ module:{exports:{}}, Buffer,__dirname:path.join(__dirname,'../apps/pllana_airplay'),
+            require:name=>name==='./audio_metadata'?require('../apps/pllana_airplay/audio_metadata'):require(name),
+            process:{env:process.env,pid:process.pid,getuid:()=>process.getuid(),kill:()=>{const error=Error('missing group');error.code='ESRCH';throw error;}},
+            setInterval:()=>({}),clearInterval:()=>{},
+            setTimeout:(fn,ms)=>{const timer={fn,ms};deadlines.push(timer);return timer;},
+            clearTimeout:timer=>{const index=deadlines.indexOf(timer);if(index>=0)deadlines.splice(index,1);},
+        };
+        vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../apps/pllana_airplay/receiver.js'),'utf8'),isolated);
+        const stuckChild=new EventEmitter(); stuckChild.pid=999999; stuckChild.kill=signal=>signals.push(signal);
+        const stuck=new isolated.module.exports.Receiver({dataDir:dir,audioSink:'fakesink',skipRuntimeCheck:true,spawn:()=>stuckChild});
+        assert(stuck.start({profile:'video'}));
+        let ended=false;stuck.on('ended',()=>{ended=true;});
+        const failedStop=stuck.stop().then(()=>{throw Error('unreaped receiver reported stopped');},error=>error);
+        assert.deepStrictEqual(signals,['SIGTERM'],'ESRCH from the process group falls back to signaling the child');
+        stuckChild.emit('error',Error('signal failed'));
+        assert.strictEqual(ended,false,'an error on a live child does not prove its sockets closed');
+        for(const ms of [3000,5000]) {const timer=deadlines.find(item=>item.ms===ms);assert(timer);timer.fn();}
+        assert.strictEqual((await failedStop).message,'receiver_stop_failed');
+        assert.deepStrictEqual(signals,['SIGTERM','SIGKILL']);
+        assert.strictEqual(stuck.child,stuckChild); assert.strictEqual(stuck.start({profile:'auto'}),false);
+        const retryStop=stuck.stop(); stuckChild.emit('close',0); await retryStop;
+        assert.strictEqual(stuck.child,null); assert.strictEqual(stuck.stopPromise,null);
+        assert.strictEqual(stuck.state.phase,'stopped'); assert.strictEqual(deadlines.length,0);
+        console.log('Node-8 receiver startup, automatic audio/video switching, origin-aware return and stable pairing passed');
     } finally {
         await r.destroy();
         for (const name of fs.readdirSync(dir)) fs.unlinkSync(path.join(dir, name));

@@ -70,40 +70,39 @@ int main(int argc, char **argv) {
     const off_t slot = 64 + header[5] * width * height * 3 / 2;
     g_assert_cmpint(pread(fd, luma, width * height, slot), ==, width * height);
     close(fd);
-    /* Fixtures encode Y=64+80*x/source_width+80*y/source_height. Check
-       decoded pixels against an aspect-preserving central cover crop. This
-       catches both letterboxing and stretching, including horizontal crops
-       for inputs wider than the screen, rather than checking caps alone. */
-    const double sx = (double)width / source_width, sy = (double)height / source_height;
-    const double scale = sx > sy ? sx : sy;
-    const double left = (source_width - width / scale) / 2;
-    const double top = (source_height - height / scale) / 2;
+    /* Fixtures have four distinct corner patches plus an asymmetric gradient.
+       Check the whole source mapped independently on both axes. A central
+       crop loses the corner patches; contain adds bars; proportional scaling
+       cannot satisfy this matrix for source aspects other than 80:21. */
     const guint xs[] = {8, width / 2, width - 9}, ys[] = {8, height / 2, height - 9};
     for (guint iy = 0; iy < G_N_ELEMENTS(ys); ++iy) {
         for (guint ix = 0; ix < G_N_ELEMENTS(xs); ++ix) {
-            const double x = left + (xs[ix] + 0.5) / scale;
-            const double y = top + (ys[iy] + 0.5) / scale;
-            const gint expected = 64 + 80 * x / source_width + 80 * y / source_height;
+            const double x = (xs[ix] + 0.5) / width;
+            const double y = (ys[iy] + 0.5) / height;
+            const gint expected = x < 0.125 && y < 0.125 ? 40 :
+                x > 0.875 && y < 0.125 ? 88 :
+                x < 0.125 && y > 0.875 ? 160 :
+                x > 0.875 && y > 0.875 ? 208 : 64 + 72 * x + 40 * y;
             const gint actual = luma[ys[iy] * width + xs[ix]];
             if (ABS(expected - actual) > 6)
-                g_error("%ux%u cover pixel %u,%u: expected Y=%d, got %d",
+                g_error("%ux%u complete-source stretch pixel %u,%u: expected Y=%d, got %d",
                         source_width, source_height, xs[ix], ys[iy], expected, actual);
         }
     }
     for (guint x = 0; x < width; ++x) {
-        g_assert_cmpuint(luma[x], >, 54);
-        g_assert_cmpuint(luma[(height - 1) * width + x], >, 54);
+        g_assert_cmpuint(luma[x], >, 30);
+        g_assert_cmpuint(luma[(height - 1) * width + x], >, 30);
     }
     for (guint y = 0; y < height; ++y) {
-        g_assert_cmpuint(luma[y * width], >, 54);
-        g_assert_cmpuint(luma[y * width + width - 1], >, 54);
+        g_assert_cmpuint(luma[y * width], >, 30);
+        g_assert_cmpuint(luma[y * width + width - 1], >, 30);
     }
     g_free(luma);
     gst_element_set_state(player, GST_STATE_NULL);
     gst_message_unref(message); gst_object_unref(bus); gst_object_unref(pad);
     gst_object_unref(probe); gst_object_unref(audio); gst_object_unref(player);
     g_assert_cmpint(access(path, F_OK), ==, -1); g_free(path);
-    g_print("HLS %ux%u: 1920x504 I420 centre crop without bars/stretch, 8-channel 48 kHz S16LE audio, EOS and cleanup passed\n",
+    g_print("HLS %ux%u: 1920x504 I420 stretch with all four source corners and no added bars/crop, 8-channel 48 kHz S16LE audio, EOS and cleanup passed\n",
             source_width, source_height);
     return 0;
 }

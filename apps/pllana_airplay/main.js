@@ -17,7 +17,8 @@ mgu.run({ async start(ctx) {
     const logo = new LogoBridge(ctx.display);
     const artwork = new MusicArtworkBridge(ctx.display, path.join(ctx.dataDir, 'airplay'));
     let state = receiver.state, notice = '', closing = false, controlsUntil = 0, diagnosis = '', diagnosedAt = 0;
-    let mirrorResumeUntil = 0;
+    let mirrorResumeUntil = 0, disconnecting = null;
+    const isAudio = next => next.mode === 'audio' || next.profile === 'audio';
     const uid = process.getuid ? process.getuid() : 0;
     const unreachable = () => !receiver.socket || receiver.socket.connecting || receiver.socket.destroyed;
     ctx.display.onPresentationInput = () => {
@@ -27,34 +28,45 @@ mgu.run({ async start(ctx) {
     receiver.on('state', next => {
         if (next.mode === 'waiting' && next.returnMode === 'mirror' &&
             (state.mode !== 'waiting' || state.returnMode !== 'mirror')) mirrorResumeUntil = Date.now() + 5000;
-        if (next.profile === 'audio' || next.returnMode !== 'mirror' || next.frame) mirrorResumeUntil = 0;
+        if (isAudio(next) || next.returnMode !== 'mirror' || next.frame) mirrorResumeUntil = 0;
         state = next;
-        artwork.update(state.profile === 'audio' && state.music && state.music.artwork, state.music && state.music.epoch);
-        if (!state.frame || state.profile === 'audio') video.detach();
+        artwork.update(isAudio(state) && state.music && state.music.artwork, state.music && state.music.epoch);
+        if (!state.frame || isAudio(state)) video.detach();
         if (state.error) log.warn('AirPlay: ' + state.error);
     });
     ui.onClick('BTN_START', () => {
-        if (!video.ready()) { notice = 'Videoausgabe noch nicht verfügbar'; return; }
-        notice = receiver.start('video') ? '' : (diagnose(uid) || 'Empfangsdienst startet noch. Bitte erneut versuchen.');
-    });
-    ui.onClick('BTN_AUDIO', () => {
-        notice = receiver.start('audio') ? '' : (diagnose(uid) || 'Empfangsdienst startet noch. Bitte erneut versuchen.');
+        if (disconnecting) return;
+        notice = receiver.start('auto') ? '' : (diagnose(uid) || 'Empfangsdienst startet noch. Bitte erneut versuchen.');
     });
     ui.onClick('BTN_END_VIDEO', () => {
         if (state.mode === 'hls' || state.phase === 'loading' || state.playlistPending)
             notice = receiver.endVideo() ? '' : 'Videosteuerung noch nicht verfügbar.';
         else notice = 'Kein Video aktiv.';
     });
-    ui.onClick('BTN_STOP', () => { notice = ''; receiver.stop(); });
+    const endSession = async close => {
+        controlsUntil = Date.now() + 8000;
+        notice = 'AirPlay-Verbindung wird getrennt …';
+        if (!disconnecting) disconnecting = receiver.stop();
+        try {
+            await disconnecting;
+            notice = '';
+            if (close) { closing = true; await ui.close('MAIN'); }
+        } catch (e) {
+            closing = false;
+            controlsUntil = Date.now() + 8000;
+            notice = 'Trennen wurde nicht bestätigt. Bitte erneut versuchen.';
+        } finally { disconnecting = null; }
+    };
+    ui.onClick('BTN_STOP', () => endSession(false));
     ui.onClick('BTN_MIRROR', () => {
-        if (state.profile === 'audio') { notice = 'Für Bild und Ton „Verbinden“ wählen.'; return; }
+        if (isAudio(state)) { notice = 'Bildschirmsynchronisierung am iPhone starten.'; return; }
         if (state.detached || state.mode === 'hls' || state.playlistPending) { notice = ''; receiver.resumeMirror(); controlsUntil = 0; }
         else notice = 'Kein Video aktiv – die Spiegelung läuft bereits.';
     });
-    ui.onClick('BTN_CLOSE', async () => { closing = true; await receiver.stop(); await ui.close('MAIN'); });
+    ui.onClick('BTN_CLOSE', () => endSession(true));
     const musicControl = action => {
         const music = state.music || {}, controls = music.controls || {};
-        if (state.profile !== 'audio' || !controls[action]) return;
+        if (disconnecting || !isAudio(state) || !controls[action]) return;
         let value;
         if (action === 'shuffle') {
             if (music.shuffle !== 0 && music.shuffle !== 1) return;
@@ -85,18 +97,18 @@ mgu.run({ async start(ctx) {
     // picked up within ~100 ms. The video itself is drawn by the native
     // renderer, so this only re-records a small canvas.
     ctx.loop('MAIN', 10, async () => {
-        const transitioning = state.profile !== 'audio' && (state.phase === 'loading' ||
+        const transitioning = !isAudio(state) && (state.phase === 'loading' ||
             (state.mode === 'waiting' && state.returnMode === 'mirror' && !!state.pin && !state.error &&
                 !state.playlistPending && Date.now() < mirrorResumeUntil));
-        const fullscreen = state.profile !== 'audio' && (!!state.frame || transitioning) && Date.now() >= controlsUntil && video.ready();
+        const fullscreen = !isAudio(state) && (!!state.frame || transitioning) && Date.now() >= controlsUntil && video.ready();
         ctx.display.setPresentation(fullscreen);
         const size = fullscreen ? ctx.display.gpu.screen : { w: 1600, h: 520 };
         const c = ctx.canvas(size.w, size.h);
-        if (state.profile !== 'audio' && state.frame && video.attach(state.file, state.frame.generation)) {
+        if (!isAudio(state) && state.frame && video.attach(state.file, state.frame.generation)) {
             c.clear('#000000');
-            // Videos fill the viewport with a centered crop. Mirroring keeps
-            // the whole phone visible when a video returns to its origin.
-            video.draw(c, 0, 0, size.w, size.h, state.frame, state.mode === 'hls' ? 'cover' : 'contain');
+            // Native HLS frames already fit the full 1920x504 output through
+            // scaling. Keep the complete frame visible in every UI layout.
+            video.draw(c, 0, 0, size.w, size.h, state.frame, state.mode === 'hls' ? 'stretch' : 'contain');
         } else if (transitioning) {
             c.clear('#000000');
             logo.draw(c, size.w / 2 - 32, size.h / 2 - 70, 64, 64);

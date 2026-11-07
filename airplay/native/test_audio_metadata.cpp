@@ -4,6 +4,7 @@
 #include <vector>
 #include <string>
 static bool mgu_audio_only = true;
+static bool mgu_audio_auto = false;
 #include "mgu_audio_metadata.h"
 
 static void append32(std::vector<unsigned char> &output, uint32_t value) {

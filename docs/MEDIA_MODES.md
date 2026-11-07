@@ -1,6 +1,7 @@
 # Video, Bildschirmspiegelung und reine Musikwiedergabe
 
-App und Empfänger **0.4.4** unterscheiden den Ursprung eines Videos und
+App und Empfänger **0.4.5** erkennen Audio und Video automatisch,
+unterscheiden den Ursprung eines Videos und
 respektieren ausdrückliche Wiedergabesteuerung. Das sechsstellige Passwort
 und der bereitstehende Empfänger bleiben beim Beenden eines einzelnen
 Videos erhalten.
@@ -9,27 +10,27 @@ Videos erhalten.
 | --- | --- | --- |
 | Bildschirmsynchronisierung, danach AirPlay-Video | Video nutzt den eigenständigen Medienpfad; Spiegelungspakete übernehmen nicht die Ausgabe | Zur vorhandenen Bildschirmspiegelung zurück |
 | AirPlay-Video direkt aus YouTube | Video kann unabhängig vom sichtbaren iPhone-Bildschirm weiterlaufen | Empfang wartet auf das nächste Video; keine automatische Spiegelung |
-| „Nur Audio“, anschließend AirPlay-Audio am iPhone | Musikwiedergabe ist unabhängig von der MGU-Oberfläche | Nach Pause/Audioende weiter als Audioempfänger bereit |
+| AirPlay-Audio am iPhone auswählen | Automatische Musikansicht; Wiedergabe unabhängig von der MGU-Oberfläche | Nach Pause/Audioende weiter auf Musik oder Video warten |
 
 ## Bedienung
 
-- **Verbinden:** Empfang mit Bild und Ton. Am iPhone entweder
+- **Verbinden:** Gemeinsamer Empfang mit Bild und Ton. Am iPhone entweder
   Bildschirmsynchronisierung oder AirPlay direkt in der Video-App wählen.
-  Der Empfänger erkennt den Ursprung des Videostreams.
+  Für Musik denselben Empfänger als Audioausgabe wählen. Der Empfänger
+  erkennt den Transport und wechselt automatisch zur passenden Ansicht,
+  ohne die AirPlay-Verbindung für den Moduswechsel neu zu starten.
 - **Video beenden:** Nur das aktuelle Video bzw. dessen Ladevorgang beenden.
   Der Ursprung bestimmt die Rückkehr zur Spiegelung oder zum Warten.
 - **Zur Spiegelung:** Ausdrücklich zur Bildschirmspiegelung zurückkehren,
   auch nach einem direkt gestarteten Video. Dafür muss das iPhone eine
   Spiegelung liefern; die MGU kann sie nicht auf dem iPhone einschalten.
-- **Nur Audio:** Empfang als AirPlay-Audioziel. Im iPhone-Kontrollzentrum
-  oder in einer Musik-App den BMW-Empfänger als Ausgabe auswählen. Es wird
-  kein Video- oder Spiegelungsempfänger angekündigt und keine Videofläche
-  erzeugt. Ein Profilwechsel startet den Empfänger mit denselben
-  Kopplungsdaten und den geänderten Fähigkeiten neu.
 - **Trennen / Schließen:** Den gesamten Empfang und den eigenen BMW-Audiopfad
-  beenden. Das unterscheidet sich vom bloßen Wechsel zu BMW Home.
+  beenden. Die Bestätigung folgt erst nach dem tatsächlichen Empfängerende
+  und der Audiofreigabe. Laufende oder geplante Wiederherstellungen werden
+  verworfen. Bei fehlender Bestätigung bleibt „Schließen“ geöffnet und
+  zeigt einen erneut versuchbaren Fehler. BMW Home beendet den Empfang nicht.
 
-„Nur Audio“ verwendet den vorhandenen RAOP-Audiopfad. Das iPhone lädt seine
+Musikwiedergabe verwendet den vorhandenen RAOP-Audiopfad. Das iPhone lädt seine
 Musik; Internet an der MGU ist dafür nicht erforderlich. Die Auswahl als
 AirPlay-Ziel in Spotify oder YouTube Music ist am konkreten iPhone noch zu
 prüfen. Spotify Connect und AirPlay-2-Multiroom sind nicht Teil dieser Änderung.
@@ -67,28 +68,26 @@ Wird AirPlay bzw. die Spiegelung am iPhone vollständig getrennt, bleibt der
 MGU-Empfänger verfügbar. Er kann keine vom iPhone getrennte Verbindung oder
 Bildschirmspiegelung selbst wiederherstellen.
 
-## Bildfüllende Videos in 1920 × 504
+## Vollständige Videos in 1920 × 504 ohne Beschnitt
 
-HLS-Videos werden als I420 mit **1920 × 504** Bildpunkten ausgegeben. Vor
-Skalierung und Farbumwandlung wird das Bild mittig auf das Verhältnis 80:21
-beschnitten. Bei 16:9, 21:9 und 16:10 werden überstehende Bildteile entfernt,
-sodass der Empfänger keine zusätzlichen Letterbox-/Pillarbox-Ränder erzeugt.
-Das Seitenverhältnis des Motivs bleibt erhalten; das Bild wird nicht gestreckt.
-Die native Ausgabe enthält rund fünf Prozent mehr Bildpunkte als 1280 × 720.
+Ab 0.4.5 werden HLS-Videos als vollständiges I420-Bild auf **1920 × 504**
+skaliert. Horizontale und vertikale Skalierung dürfen sich unterscheiden:
+Das Bild wird passend gedehnt oder gestaucht. Es gibt keinen Zoom,
+keinen Aspect-Ratio-Crop und keine abgeschnittenen oberen, unteren oder
+seitlichen Bildteile. Das ersetzt den zentrierten Beschnitt aus 0.4.4.
 
-Die Oberfläche verwendet die tatsächliche Größe der Videofläche und
-beschneidet die zentrierte Cover-Darstellung an deren Grenzen. Die normale
-Bildschirmspiegelung behält ihre vollständige Darstellung,
-damit die iPhone-Oberfläche nach einem Video wieder bedienbar sichtbar ist.
-Bereits in der Quelldatei kodierte schwarze Bildinhalte werden nicht als
-separate Balken erkannt.
+Die Ausgabe erzeugt keine zusätzlichen Letterbox-/Pillarbox-Ränder.
+Bereits in der Quelle kodierte schwarze Bildinhalte bleiben als Teil des
+vollständigen Bildes erhalten. In abweichenden Oberflächenlayouts bleibt
+ebenfalls der vollständige Frame sichtbar. Normale Bildschirmspiegelung
+zeigt weiterhin die gesamte iPhone-Oberfläche.
 
 ## Audio bei geschlossener Oberfläche
 
-Ein gestarteter Audioempfänger läuft nach Fokusverlust, BMW Home oder dem
+Eine erkannte Musiksitzung läuft nach Fokusverlust, BMW Home oder dem
 Ende der Oberfläche weiter. Auch neue Titel können ohne offene Oberfläche
 Audio anfordern. „Trennen“ und „Schließen“ beenden ihn ausdrücklich.
-Nach einem unerwarteten nativen Empfängerende wird das gewählte Profil
+Nach einem unerwarteten nativen Empfängerende wird der gewünschte Empfang
 mit demselben Passwort wieder gestartet.
 
 ## Abnahme am Fahrzeug
@@ -105,13 +104,20 @@ Spotify-/YouTube-Music- oder YouTube-Test am iPhone.
    neuen Titel, ohne Bildschirmspiegelung. Danach einen weiteren Titel senden.
 3. Beide Abläufe mit Pause/Fortsetzen, „Video beenden“, natürlichem Ende
    und einer YouTube-Playlist prüfen.
-4. „Nur Audio“ → Musik senden → BMW Home → Pause/Fortsetzen und nächster
-   Titel. Anschließend „Trennen“ prüfen.
+4. „Verbinden“ → Musik senden: ohne weitere Auswahl automatisch Cover und
+   Musiktasten sehen. BMW Home → Pause/Fortsetzen und nächster Titel.
+   Anschließend „Trennen“ prüfen; am iPhone darf die aktive Audioverbindung
+   nicht bestehen bleiben.
 5. Videos in 16:9, 21:9 und 16:10 auf der 1920-×-504-Fläche prüfen;
-   füllendes Bild, zentrierter Beschnitt und unverzerrte Motive vergleichen.
-6. Zwischen Bild-/Tonempfang und reinem Audio wechseln; Audiopfad,
-   Kopplungscode und erneut auswählbaren AirPlay-Empfänger prüfen.
+   vollständige obere/untere/seitliche Kanten und alle vier Bildecken
+   prüfen. Dehnung/Stauchung ist beabsichtigt; Beschnitt ist nicht erlaubt.
+6. In derselben Empfängersitzung Musik → Video/Spiegelung → Musik wechseln;
+   Anzeige, Audiopfad und Kopplungscode prüfen. Videoton darf die
+   Musikansicht nicht ungewollt öffnen.
 7. Cover und Titelwechsel einschließlich fehlender Metadaten, Pause/Play,
    vorherigem/nächstem Titel sowie bestätigtem Shuffle-/Repeat-Zustand
    in Spotify und YouTube Music prüfen. Nach Trennen dürfen kein altes
    Cover und keine Steuerbefehle an die vorige Sitzung verbleiben.
+8. „Trennen“ und „Schließen“ während Musik, Spiegelung, laufendem Video
+   und Video-Laden prüfen; ohne automatischen Neustart, anschließend
+   ausdrücklich „Verbinden“ für eine neue Sitzung wählen.

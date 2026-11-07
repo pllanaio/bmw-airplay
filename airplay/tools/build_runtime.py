@@ -13,6 +13,7 @@ from patch_playlist import patch as patch_playlist
 from patch_audio_mode import patch as patch_audio_mode
 from patch_audio_metadata import patch as patch_audio_metadata
 from patch_music_control import patch as patch_music_control
+from patch_shutdown import patch as patch_shutdown
 
 ROOT = Path(__file__).resolve().parents[2]
 WORK = ROOT / '.local/airplay'
@@ -86,6 +87,7 @@ def main():
     ux_text, video_text = patch_audio_mode(source, ux_text, video_text)
     ux_text, video_text = patch_audio_metadata(source, ux_text, video_text)
     ux_text = patch_music_control(source, ux_text)
+    ux_text = patch_shutdown(source, ux_text)
     for name in ['mgu_reverse.h', 'mgu_playlist.h']:
         shutil.copy2(ROOT / 'airplay/native' / name, source / 'lib' / name)
     shutil.copy2(ROOT / 'airplay/native/mgu_direct_play.h', source / 'lib/mgu_direct_play.h')
@@ -127,11 +129,13 @@ def main():
     shutil.copy2(dns, RUNTIME / 'lib/libdns_sd.so')
     # Mirroring and YouTube HLS; no system plugin discovery on the target.
     plugin_names = ['coreelements', 'app', 'libav', 'videoparsersbad', 'audioparsers',
-                    'videoconvertscale', 'videocrop', 'videofilter', 'audioconvert', 'audioresample',
+                    'videoconvertscale', 'videofilter', 'audioconvert', 'audioresample',
                     'volume', 'level', 'typefindfunctions', 'jpeg', 'png', 'imagefreeze', 'pango',
                     'playback', 'autodetect', 'alsa', 'audiotestsrc',
                     'soup', 'adaptivedemux2', 'hls', 'isomp4', 'mpegtsdemux', 'matroska', 'tcp', 'deinterlace']
     plugins = Path('/usr/lib/x86_64-linux-gnu/gstreamer-1.0')
+    # Remove the old cropping plugin from an incremental 0.4.4 build too.
+    (RUNTIME / 'plugins/libgstvideocrop.so').unlink(missing_ok=True)
     for name in plugin_names:
         src = plugins / ('libgst' + name + '.so')
         if not src.is_file():
@@ -183,17 +187,18 @@ def main():
         executable.chmod(0o755)
     (RUNTIME / 'lib/ld-linux-x86-64.so.2').chmod(0o755)
     record = {
-        'format': 'mgu-airplay-runtime-v1', 'version': '0.4.4', 'architecture': 'x86_64',
+        'format': 'mgu-airplay-runtime-v1', 'version': '0.4.5', 'architecture': 'x86_64',
         'uxplay': {'version': '1.73.7', 'revision': UX_REV},
         'mdns_client': {'version': '765.20.4', 'revision': MDNS_REV, 'daemon': 'existing MGU mdnsd'},
         'source_patch': {'file': 'lib/CMakeLists.txt', 'sha256': sha(cmake)},
         'connection_events_patch_sha256': sha(ux_source),
         'hls_renderer_patch_sha256': sha(video_source),
-        'features': ['detach', 'native-detach', 'playlist', 'video-modes', 'media-stop', 'audio-only', 'video-cover', 'audio-metadata', 'music-control'],
+        'features': ['detach', 'native-detach', 'playlist', 'video-modes', 'media-stop', 'audio-only', 'auto-media', 'video-stretch', 'audio-metadata', 'music-control', 'full-disconnect'],
         'audio_profile_patch_sha256': sha(ROOT / 'airplay/tools/patch_audio_mode.py'),
         'audio_metadata_patch_sha256': sha(ROOT / 'airplay/tools/patch_audio_metadata.py'),
         'audio_metadata_sha256': sha(ROOT / 'airplay/native/mgu_audio_metadata.h'),
         'music_control_patch_sha256': sha(ROOT / 'airplay/tools/patch_music_control.py'),
+        'shutdown_patch_sha256': sha(ROOT / 'airplay/tools/patch_shutdown.py'),
         'music_control_sha256': sha(ROOT / 'airplay/native/mgu_music_control.h'),
         'dacp_resolver_sha256': sha(ROOT / 'airplay/native/mgu_dacp_resolve.c'),
         'hls_output_sha256': sha(ROOT / 'airplay/native/mgu_hls_output.h'),

@@ -73,12 +73,18 @@ an das Frontend. Der Kontrollsocket ist nur für diese Identität zugänglich.
 - Ein Bildschirm-/Fokuswechsel beendet die Sitzung nicht absichtlich.
 - „Trennen“, „Schließen“ oder ein Backend-Ende räumen auf.
 
-Ein verlorenes Frontend erhält im Videoprofil eine Wiederverbindungsfrist
-von 30 Sekunden. Das gewählte Audioprofil bleibt ohne Oberfläche aktiv,
-bis es ausdrücklich beendet wird oder der Backend-Dienst endet.
+Ein verlorenes Frontend erhält bei Video eine Wiederverbindungsfrist
+von 30 Sekunden. Eine erkannte Musiksitzung bleibt ohne Oberfläche aktiv,
+bis sie ausdrücklich beendet wird oder der Backend-Dienst endet.
 
-Beim regulären Beenden wird die eigene Receiver-Prozessgruppe zunächst
+Beim ausdrücklichen Trennen wird die eigene Receiver-Prozessgruppe zunächst
 mit SIGTERM beendet; nach einem kurzen Timeout folgt gegebenenfalls SIGKILL.
+Die Bestätigung erfordert den Abschluss der Empfänger-Prozessgruppe und
+die Freigabe des eigenen BMW-Audiopfads. Ein geschlossener Frontend-Socket
+oder ein beendeter Gruppenleiter allein gilt nicht als abgeschlossene Trennung.
+Stop-Aufträge verwerfen Wiederherstellungs- und Startaufträge sofort,
+auch während andere Backend-Operationen noch ausstehen. Die Oberfläche
+wartet auf eine zugehörige Bestätigung und zeigt Fehler oder Zeitablauf an.
 Das ist keine Steuerung serienmäßiger BMW-/CarPlay-Prozesse.
 
 ## Zustände und gewünschtes Verhalten
@@ -88,7 +94,7 @@ Der Zustand enthält getrennte Informationen:
 | Feld | Bedeutung |
 | --- | --- |
 | phase | stopped, starting, waiting, loading, mirroring, audio, recovering, stopping oder error |
-| profile | video oder audio |
+| profile | auto als Standard; video/audio für ältere explizite Aufrufe |
 | mode | mirror, hls, waiting, audio oder kein Modus |
 | returnMode | Rückkehr zur Spiegelung oder zum Warten nach einem Video |
 | playlistPending | Natürlicher Titelabschluss gemeldet; die Sitzung erwartet einen möglichen Folgetitel |
@@ -167,15 +173,16 @@ Die HLS-Ausgabe nutzt:
 
 - Softwaredekodierung;
 - I420 mit 1920×504 Ausgabefläche;
-- zentrierter Beschnitt auf 80:21 bei erhaltenem Seitenverhältnis, ohne zusätzliche Ränder;
-- drei Sekunden Pufferdauer und vier MiB Pufferbudget;
+- vollständige Skalierung auf die Zielfläche, bei Bedarf mit unterschiedlicher
+  horizontaler/vertikaler Streckung, ohne Beschnitt oder zusätzliche Ränder;
+- fünf Sekunden Pufferdauer und acht MiB Pufferbudget;
 - eine Verbindungsratenempfehlung von 2500 kbit/s;
 - keine unbeschränkte Download-Datei als Videocache.
 
 Diese Ausgabegrenze beschränkt nicht automatisch Auflösung oder Codec
 des tatsächlich heruntergeladenen Quellstreams.
 
-## Wiedergabeprofile und Rückkehrziel ab 0.4.4
+## Automatische Medienwahl und Rückkehrziel
 
 Das native Video meldet `MGU_ORIGIN mirror|direct` und nach Ende
 `MGU_RETURN mirror|waiting`. Ausdrückliche Mediensteuerung bleibt wirksam;
@@ -188,13 +195,29 @@ starten. Ein neuer expliziter Spiegelungs-SETUP gibt diesen Pfad wieder frei.
 SIGUSR2 bleibt die ausdrückliche Rückkehr zur Spiegelung. Stop-/Pause-Signale
 werden nicht pauschal als Hintergrundereignisse ignoriert.
 
-Das Profil `audio` startet mit `-vs 0`, ohne HLS, und mit `MGU_AUDIO_ONLY=1`.
-Die native Ankündigung enthält keine Video-/Foto-/Spiegelungsfähigkeiten.
-`MGU_AUDIO_PLAY` und `MGU_AUDIO_WAITING` melden den Empfangsstatus. Das Backend
-hält das gewählte Audio-Profil nach einem Verlust der Oberfläche aktiv;
-Frontend-Ende trennt dessen Socket, eine ausdrückliche Trennaktion den
-Receiver. Das Videoprofil behält seine begrenzte Wiederverbindungsfrist.
+Ab 0.4.5 startet die Oberfläche `profile=auto` mit voller Audio-/Video-
+Ankündigung und `MGU_AUTO_MEDIA=1`. RAOP-Formatangaben und tatsächliche
+Medienpakete unterscheiden eigenständige Musik von Spiegelungs-/Videoton.
+`MGU_MODE audio`, `MGU_AUDIO_PLAY` und `MGU_AUDIO_WAITING` schalten zur
+Musikansicht. Akzeptierte Spiegelungs- oder HLS-Übergaben übernehmen die
+Bildausgabe; deren Audiopakete dürfen die Musikansicht nicht erneut öffnen.
+Eine bereits bestehende, gerade statische Spiegelung behält ihre Zuständigkeit.
+Der native Prozess und seine Kopplung werden beim Ansichtswechsel erhalten.
+
+Das Backend hält erkannte Musikwiedergabe nach einem Verlust der Oberfläche
+aktiv; Frontend-Ende trennt dessen Socket, eine ausdrückliche Trennaktion den
+Receiver. Video behält seine begrenzte Wiederverbindungsfrist. Der bisherige
+explizite Audio-Aufruf bleibt für ältere Clients verfügbar; die Oberfläche
+benötigt keine separate Schaltfläche mehr.
 [Bedienung und Grenzen](MEDIA_MODES.md).
+
+Die volle Empfängerabschaltung ist von „Video beenden“ getrennt. Bei
+SIGTERM/SIGINT beendet der native Empfänger alle Threads unmittelbar über
+einen signalsicheren Prozessausstieg; das Betriebssystem schließt seine
+TCP-/UDP-/ALSA- und mDNS-Clientdeskriptoren. Interne HTTP-Server-Neustarts
+unterbrechen wartende Sockets vor dem Thread-Join. Unvollständige Anfragen
+dürfen so den Abbau nicht dauerhaft festhalten. Der Node-Backend-Prozess
+gibt danach den eigenen BMW-Audiopfad frei.
 
 ## YouTube-Warteschlangen
 
@@ -215,12 +238,13 @@ zwei Titeln verfügbar und verwirft die ausstehende Fortsetzung. Die eigentliche
 Warteschlange und die Auswahl des nächsten Videos bleiben auf dem iPhone.
 [Bedienung und Fahrzeug-Testmatrix](PLAYLISTS.md).
 
-Die VideoBridge stellt HLS-Videos bildfüllend dar und beschneidet die
-überstehende Cover-Fläche auf das tatsächliche Zielrechteck. Der vorhandene
-Renderer bekommt dafür eine größere, proportional skalierte Fläche unter
-einem Clip. Für die Bildschirmspiegelung bleibt dessen normale
-vollständige Aspect-Fit-Darstellung aktiv. Ein Renderer-Protokollwechsel
-ist dafür nicht erforderlich.
+Die HLS-Pipeline skaliert ab 0.4.5 das vollständige Quellbild direkt auf
+1920×504 mit `videoconvertscale add-borders=false`. `aspectratiocrop` wird
+nicht verwendet. Die VideoBridge zoomt keine überstehende Fläche mehr
+unter einen Clip. Auf der passenden Zielfläche wird der vollständige
+skalierte Frame bildfüllend dargestellt; abweichende Layouts erhalten
+ebenfalls das ganze Bild. Für Bildschirmspiegelung bleibt die vollständige
+Aspect-Fit-Darstellung aktiv. Ein Renderer-Protokollwechsel ist nicht nötig.
 
 ## Frame-Transport
 

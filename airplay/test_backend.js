@@ -4,9 +4,9 @@ const sockets = [], writes = [], timers = [], startupOrder = [];
 let receiver, route, accept, remote, uplinkOnline = false;
 class Receiver extends EventEmitter {
     constructor(options) { super(); receiver = this; this.runtime = options.runtime; this.musicDirectory = ''; this.options = options; this.state = {}; this.child = null; this.starts = 0; this.stops = 0; }
-    start(options) { startupOrder.push('start'); this.child = {}; this.features = {}; this.starts++; this.lastOptions = options; const profile=options && options.profile || 'video'; this.musicDirectory=profile==='audio'?'/private/music-'+this.starts:''; this.update({phase:'waiting', profile, music:profile==='audio'?{title:'',epoch:null,controls:{}}:null,error:null}); this.emit('music-directory',this.musicDirectory); return true; }
-    crash() { this.child = null; this.musicDirectory=''; this.emit('music-directory',''); this.update({phase:'error', error:'receiver_failed'}); this.emit('ended'); }
-    stop() { this.stops++; if (this.onStop) { const callback = this.onStop; this.onStop = null; callback(); } this.child = null; this.musicDirectory=''; this.emit('music-directory',''); this.update({ phase:'stopped' }); this.emit('ended'); return Promise.resolve(); }
+    start(options) { startupOrder.push('start'); this.child = {}; this.features = {}; this.starts++; this.lastOptions = options; const profile=options && options.profile || 'auto'; this.musicDirectory=profile!=='video'?'/private/music-'+this.starts:''; this.update({phase:'waiting', profile, mode:profile==='audio'?'audio':'waiting', music:profile!=='video'?{title:'',epoch:null,controls:{}}:null,error:null}); this.emit('music-directory',this.musicDirectory); return true; }
+    crash() { this.child = null; this.musicDirectory=''; this.emit('music-directory',''); this.update({phase:'error', mode:null, error:'receiver_failed'}); this.emit('ended'); }
+    stop() { this.stops++; if (this.onStop) { const callback = this.onStop; this.onStop = null; callback(); } const finish=()=>{ this.child = null; this.musicDirectory=''; this.emit('music-directory',''); this.update({ phase:'stopped', mode:null }); this.emit('ended'); }; if (this.stopGate) { const gate=this.stopGate; this.stopGate=null; return gate.then(finish); } finish(); return Promise.resolve(); }
     update(fields) { Object.assign(this.state, fields); this.emit('state', this.state); }
 }
 class AudioRoute {
@@ -116,7 +116,7 @@ const turn = () => new Promise(resolve=>setImmediate(resolve));
     s3.setEncoding=()=>{}; s3.write=data=>writes.push(JSON.parse(data)); s3.destroy=()=>{s3.destroyed=true;s3.emit('close');};
     accept(s3); s3.emit('data','{"command":"start"}\n'); await turn();
     assert(receiver.child); assert.strictEqual(receiver.lastOptions.keepPassword, false, 'manual start uses a fresh password');
-    assert.strictEqual(receiver.lastOptions.profile, 'video');
+    assert.strictEqual(receiver.lastOptions.profile, 'auto');
     // Switching capabilities is deliberate; retrying the selected profile is
     // only an audio-focus retry, never a receiver/password replacement.
     const beforeSwitch = receiver.stops;
@@ -190,6 +190,81 @@ const turn = () => new Promise(resolve=>setImmediate(resolve));
     s4.emit('data','{"command":"stop"}\n'); await turn();
     assert(!receiver.child); assert(!route.owned);
     receiver.crash(); await turn(); assert(!scheduled.some(t => t.ms === 1000), 'no restart after explicit stop');
+    // A stop received in the same packet invalidates a previously queued
+    // start before it can launch, and returns a correlated acknowledgment.
+    const beforeCancelledStart=receiver.starts;
+    s4.emit('data','{"command":"start"}\n{"command":"stop","id":"cancel-pending-start"}\n'); await turn();
+    assert.strictEqual(receiver.starts,beforeCancelledStart,'explicit stop supersedes already queued starts');
+    assert(writes.some(message=>message.reply && message.reply.id==='cancel-pending-start' && message.reply.ok));
+    // Automatically detected audio uses the same native process and survives
+    // frontend loss; a later real video restores the existing grace policy.
+    s4.emit('data','{"command":"start"}\n'); await turn();
+    const automaticStarts=receiver.starts, automaticStops=receiver.stops;
+    receiver.update({mode:'audio',phase:'audio'}); receiver.emit('media','audio'); await turn();
+    remote.state({epoch:'automatic-sender',controls:{next:true},playbackState:'playing'});
+    s4.emit('data','{"command":"music-control","action":"next","epoch":"automatic-sender"}\n'); await turn();
+    assert.strictEqual(remote.actions[remote.actions.length-1].epoch,'automatic-sender');
+    s4.destroy(); await turn();
+    assert(receiver.child && route.owned,'detected automatic audio survives leaving the frontend');
+    assert(!scheduled.some(t=>t.ms===30000),'standalone audio has no frontend grace deadline');
+    receiver.update({mode:'hls',phase:'loading'}); receiver.emit('media','hls'); await turn();
+    assert.strictEqual(receiver.starts,automaticStarts,'audio to video does not restart the native receiver');
+    assert.strictEqual(receiver.stops,automaticStops);
+    assert(scheduled.some(t=>t.ms===30000),'a real video after audio restores frontend grace');
+    receiver.update({mode:'audio',phase:'audio'}); receiver.emit('media','audio'); await turn();
+    assert(!scheduled.some(t=>t.ms===30000),'returning to standalone audio cancels the video grace deadline');
+    receiver.crash(); await turn(); fire(1000); await turn(); await turn();
+    assert(receiver.child && route.owned,'automatic audio recovers after a crash without its UI');
+    assert.strictEqual(receiver.lastOptions.profile,'auto');
+    const finalUI=new EventEmitter(); finalUI.destroyed=false; finalUI.writableLength=0;
+    finalUI.setEncoding=()=>{}; finalUI.write=data=>writes.push(JSON.parse(data)); finalUI.destroy=()=>{finalUI.destroyed=true;finalUI.emit('close');};
+    accept(finalUI); finalUI.emit('data','{"command":"stop","id":"auto-stop"}\n'); await turn();
+    assert(!receiver.child && !route.owned);
+    assert(writes.some(message=>message.reply && message.reply.id==='auto-stop' && message.reply.ok));
+    // A pending AudioManager grant must not delay native socket closure, and
+    // cleanup must include that late grant before the success reply is sent.
+    const originalAcquire=route.acquire;
+    let grantAudio, closeNative;
+    route.acquire=()=>new Promise(resolve=>{grantAudio=()=>{route.owned=true;resolve();};});
+    finalUI.emit('data','{"command":"start"}\n'); await turn();
+    assert(receiver.child && grantAudio);
+    receiver.stopGate=new Promise(resolve=>{closeNative=resolve;});
+    const beforePriorityStop=receiver.stops;
+    finalUI.emit('data','{"command":"stop","id":"priority-stop"}\n'); await turn();
+    assert.strictEqual(receiver.stops,beforePriorityStop+1,'stop reaches native while AudioManager acquire is pending');
+    closeNative(); await turn();
+    assert(!receiver.child,'native sockets close before the pending audio call returns');
+    assert(!writes.some(message=>message.reply && message.reply.id==='priority-stop'),'child closure alone cannot acknowledge incomplete route cleanup');
+    grantAudio(); await turn(); await turn();
+    assert(!route.owned,'a late audio route grant is released after stop');
+    assert(writes.some(message=>message.reply && message.reply.id==='priority-stop' && message.reply.ok));
+    route.acquire=originalAcquire;
+    // Native/route failures are explicit and cannot be mistaken for success.
+    const originalStop=receiver.stop;
+    receiver.stop=()=>Promise.reject(Error('native_still_alive'));
+    finalUI.emit('data','{"command":"stop","id":"failed-stop"}\n'); await turn();
+    assert(writes.some(message=>message.reply && message.reply.id==='failed-stop' && !message.reply.ok));
+    receiver.stop=originalStop;
+    finalUI.emit('data','{"command":"start"}\n'); await turn();
+    let finishFailedNative;
+    receiver.stopGate=new Promise(resolve=>{finishFailedNative=resolve;});
+    const originalRelease=route.release, beforeFailedBarrier=receiver.starts;
+    route.release=()=>Promise.reject(Error('BMW_disconnect_failed'));
+    finalUI.emit('data','{"command":"stop","id":"route-failed-stop"}\n{"command":"start"}\n'); await turn();
+    assert(receiver.child,'failed route cleanup cannot complete while native shutdown is pending');
+    assert.strictEqual(receiver.starts,beforeFailedBarrier,'a queued new start waits for native even after route cleanup fails');
+    assert(!writes.some(message=>message.reply && message.reply.id==='route-failed-stop'));
+    route.release=originalRelease; finishFailedNative(); await turn(); await turn();
+    assert(writes.some(message=>message.reply && message.reply.id==='route-failed-stop' && !message.reply.ok));
+    assert.strictEqual(receiver.starts,beforeFailedBarrier+1);
+    finalUI.emit('data','{"command":"stop"}\n'); await turn();
+    let finishStalledCleanup;
+    route.release=()=>new Promise(resolve=>{finishStalledCleanup=resolve;});
+    finalUI.emit('data','{"command":"stop","id":"cleanup-timeout"}\n'); await turn();
+    fire(10000); await turn();
+    assert(writes.some(message=>message.reply && message.reply.id==='cleanup-timeout' && !message.reply.ok),
+        'an unresponsive AudioManager returns a bounded failure without inventing a successful stop');
+    route.release=originalRelease; finishStalledCleanup(); await turn();
     // App update: the package manager moved our socket away with the old home.
     timers[1](); await turn(); assert.strictEqual(exitCode, null, 'unchanged socket keeps the backend running');
     socketInode = 2; timers[1](); await turn(); await turn();

@@ -63,7 +63,7 @@ jobs:
           GST_PLUGIN_SYSTEM_PATH_1_0= GST_PLUGIN_PATH_1_0="$R/plugins" GST_REGISTRY="$PWD/registry.bin" \
             "$R/lib/ld-linux-x86-64.so.2" --library-path "$R/lib" "$R/bin/gst-launch-1.0" -q \
             fakesrc num-buffers=0 ! queue max-size-buffers=3 max-size-bytes=0 max-size-time=0 ! \
-            video/x-raw ! aspectratiocrop aspect-ratio=80/21 ! \
+            video/x-raw ! \
             videoconvertscale add-borders=false n-threads=2 dither=none method=bilinear ! \
             video/x-raw,format=I420,width=1920,height=504,pixel-aspect-ratio=1/1 ! fakesink
           # The HLS output filter (mgu_hls_output.h) must find these bundled elements.
@@ -76,10 +76,11 @@ jobs:
           gcc -O2 -Wall airplay/native/test_video_sink.c -o test_video_sink $flags
           GST_PLUGIN_PATH=.build/airplay/runtime/plugins ./test_video_sink
           sh airplay/tools/test_lifecycle.sh
-          python3 airplay/tools/test_hls.py --cover
+          python3 airplay/tools/test_hls.py --stretch
       - name: JavaScript and Store contract tests
         run: |
           node airplay/test_audio_route.js && node airplay/test_backend.js && node airplay/test_receiver.js
+          node airplay/test_receiver_disconnect.js
           node airplay/test_frontend_lifecycle.js && node airplay/test_video_bridge.js && node airplay/test_logo_bridge.js
           node airplay/test_backend_client.js && node airplay/test_diagnose.js && node airplay/test_network.js && node airplay/test_resolver.js
           node airplay/test_audio_metadata.js && node airplay/test_music_artwork_bridge.js && node airplay/test_music_view.js

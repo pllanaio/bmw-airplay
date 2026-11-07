@@ -5,8 +5,8 @@
 Ein experimenteller, nativer AirPlay-Empfänger für BMW MGU / iDrive 7 von
 **[Leon Pllana IT-Solutions](https://pllana.io)**.
 
-**Quellstand:** App und native Laufzeit **0.4.4**.
-Die Änderungen in 0.4.4 sind lokal geprüft; die Fahrzeugabnahme steht aus.
+**Quellstand:** App und native Laufzeit **0.4.5**.
+Die Änderungen in 0.4.5 sind lokal geprüft; die Fahrzeugabnahme steht aus.
 Keine allgemeine Hardwarefreigabe und kein offizielles BMW- oder Apple-Produkt.
 
 **Der ausführliche Entwicklungsstand steht in [docs/STATUS.md](docs/STATUS.md):**
@@ -32,22 +32,32 @@ App und native Laufzeit müssen gemeinsam aktualisiert werden.
 - Eigene pllana.io-Oberfläche, 140×140-App-Symbol und deutsche Schriftzeichen.
 - Passwortbasierte Kopplung mit einem auf der MGU angezeigten sechsstelligen Code.
 
-## Drei Wiedergabearten ab 0.4.4
+## Automatische Wiedergabe ab 0.4.5
+
+Einmal „Verbinden“ drücken. Der Empfänger erkennt anhand des empfangenen
+AirPlay-Transports, ob Musik, Bildschirmspiegelung oder ein Video ankommt,
+und wechselt die Anzeige ohne Neustart der Verbindung. Eine manuelle
+Auswahl von „Nur Audio“ ist nicht mehr nötig.
 
 - **Spiegelung → Video:** Video im Hintergrund weitergeben; bewusstes
   Beenden führt zur vorhandenen Bildschirmspiegelung zurück.
 - **Direktes YouTube-AirPlay:** Video im Hintergrund weitergeben; nach
   Beenden auf den nächsten Titel warten, ohne eine Spiegelung zu starten.
-- **Nur Audio:** AirPlay-Musik über BMW-Lautsprecher, auch mit geschlossener
+- **Musik:** AirPlay-Audio über BMW-Lautsprecher, auch mit geschlossener
   Oberfläche. Cover, Titel, Interpret und Album sowie Play/Pause, vor/zurück,
   Shuffle und Repeat, soweit der gekoppelte Sender die Funktionen bereitstellt.
-  Neue Schaltfläche „Nur Audio“, eigener Empfang ohne Videofläche.
+  Der Musikempfang wird automatisch erkannt; Videoton schaltet die
+  Anzeige nicht versehentlich auf die Musikansicht.
 
-„Video beenden“ beendet nur den Medieninhalt; „Trennen“ beendet den Empfänger.
+„Video beenden“ beendet nur den Medieninhalt. „Trennen“ beendet die gesamte
+AirPlay-Sitzung und wird erst nach beendetem Empfänger samt Audiofreigabe
+bestätigt. „Schließen“ wartet auf dieselbe Bestätigung; bei einem Fehler
+bleibt die Oberfläche für einen erneuten Versuch geöffnet.
 Die Sendersteuerung bleibt wirksam. [Bedienung, Protokollgrenzen und Tests](docs/MEDIA_MODES.md).
 
-Videos füllen die **1920 × 504** große Fläche mit zentriertem Beschnitt und
-erhaltenem Seitenverhältnis; der Empfänger fügt keine Balken hinzu. Für die
+Videos werden vollständig auf **1920 × 504** gedehnt beziehungsweise
+gestaucht. Der Empfänger schneidet keine Bildinhalte ab und fügt keine
+Balken hinzu; das Seitenverhältnis kann sich dabei ändern. Für die
 Bildschirmspiegelung bleibt der ganze iPhone-Bildschirm sichtbar.
 
 ## Verwendung

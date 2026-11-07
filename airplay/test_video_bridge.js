@@ -31,25 +31,23 @@ function draw(frame, target, fit) {
 function near(a, b) { assert(Math.abs(a - b) < 0.002, a + ' != ' + b); }
 const formats = [[1920, 1080], [2520, 1080], [1920, 1200], [1080, 1920], [2560, 504], [1920, 504]];
 for (const target of [{ x: 0, y: 0, w: 1920, h: 504 }, { x: 20, y: 30, w: 1600, h: 520 }]) {
-    for (const size of formats) {
-        const c = draw({ width: size[0], height: size[1] }, target);
-        assert.strictEqual(c.n, 13);
-        assert.strictEqual(c.u[0], 13, 'crop is clipped to the requested viewport');
+    for (const size of formats) for (const fit of [undefined, 'stretch', 'contain', 'cover']) {
+        const c = draw({ width: size[0], height: size[1] }, target, fit);
+        assert.strictEqual(c.n, 7, 'video never inserts a clip or expands outside its viewport');
+        assert.strictEqual(c.u[0], 19);
         [target.x, target.y, target.w, target.h].forEach((v, i) => near(c.f[i + 1], v));
-        assert.strictEqual(c.u[5], 19);
-        const x = c.f[6], y = c.f[7], w = c.f[8], h = c.f[9];
-        // The contain-only native renderer receives the source aspect, so it
-        // adds no bars. Its clipped destination covers every viewport pixel.
-        near(w / h, size[0] / size[1]);
-        assert(x <= target.x + 0.002 && y <= target.y + 0.002);
-        assert(x + w >= target.x + target.w - 0.002 && y + h >= target.y + target.h - 0.002);
-        near(x + w / 2, target.x + target.w / 2);
-        near(y + h / 2, target.y + target.h / 2);
-        assert.strictEqual(c.u[12], 14, 'following UI drawing is not clipped');
-        const mirror = draw({ width: size[0], height: size[1] }, target, 'contain');
-        [target.x, target.y, target.w, target.h].forEach((v, i) => near(mirror.f[i + 6], v));
-        assert.strictEqual(mirror.u[5], 19, 'mirroring keeps native aspect fit and the complete phone UI');
+        assert.strictEqual(c.f[5], 0, 'the documented corner radius stays zero');
+        assert.strictEqual(c.u[6], 1);
+        // Model the renderer's documented contain behavior. Every source
+        // corner remains inside the target, even with an older runtime.
+        const scale = Math.min(target.w / size[0], target.h / size[1]);
+        const left = target.x + (target.w - size[0] * scale) / 2;
+        const top = target.y + (target.h - size[1] * scale) / 2;
+        assert(left >= target.x - 0.002 && top >= target.y - 0.002);
+        assert(left + size[0] * scale <= target.x + target.w + 0.002);
+        assert(top + size[1] * scale <= target.y + target.h + 0.002);
     }
 }
 assert.strictEqual(draw(null, { x: 0, y: 0, w: 1920, h: 504 }).n, 0);
-console.log('Video transport replacement, resize/reconnect, complete phone mirroring and centred video cover crops for 16:9, 21:9, 16:10, portrait and ultrawide passed');
+assert.strictEqual(draw({ width: 1920, height: 504 }, { x: 0, y: 0, w: 0, h: 504 }, 'stretch').n, 0);
+console.log('Video transport replacement, resize/reconnect and complete uncropped source for stretch/legacy/contain in six aspect ratios passed');

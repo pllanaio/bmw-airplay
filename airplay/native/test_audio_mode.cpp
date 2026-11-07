@@ -34,6 +34,7 @@ int main() {
     assert(saved_stdout >= 0 && capture);
     assert(dup2(fileno(capture), fileno(stdout)) >= 0);
     setenv("MGU_AUDIO_ONLY", "1", 1);
+    setenv("MGU_AUTO_MEDIA", "0", 1);
     render_coverart = true;
     mgu_audio_configure();
     assert(mgu_audio_only && !use_video && !hls_support && !h265_support && !render_coverart);

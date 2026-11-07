@@ -128,7 +128,7 @@ static void mgu_metadata_clear_art(void) {
 }
 
 static void mgu_audio_metadata_clear(void) {
-    if (!mgu_audio_only) return;
+    if (!mgu_audio_only && !mgu_audio_auto) return;
     mgu_metadata_guard guard;
     mgu_metadata_title.clear();
     mgu_metadata_artist.clear();
@@ -142,7 +142,7 @@ static uint32_t mgu_metadata_u32(const unsigned char *value) {
 }
 
 static void mgu_audio_metadata_receive(const void *buffer, int length) {
-    if (!mgu_audio_only || !buffer || length < 8 || length > 65536) return;
+    if ((!mgu_audio_only && !mgu_audio_auto) || !buffer || length < 8 || length > 65536) return;
     const unsigned char *bytes = (const unsigned char *) buffer;
     if (memcmp(bytes, "mlit", 4) || mgu_metadata_u32(bytes + 4) != (uint32_t) length - 8) return;
     std::string title, artist_name, album_name;
@@ -207,7 +207,7 @@ static bool mgu_metadata_image_size(const unsigned char *bytes, size_t length, u
 }
 
 static void mgu_audio_metadata_artwork(const void *buffer, int length) {
-    if (!mgu_audio_only) return;
+    if (!mgu_audio_only && !mgu_audio_auto) return;
     mgu_metadata_guard guard;
     unsigned int width = 0, height = 0;
     bool png = false;
