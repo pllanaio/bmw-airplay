@@ -7,7 +7,7 @@ iPhone
   ├─ Bildschirmspiegelung: AirPlay/RTP, Video + Audio
   └─ direkte Videowiedergabe: AirPlay-Steuerung / HLS
                      │
-           gemeinsames WLAN / Hotspot
+           BMW-WLAN / gemeinsames WLAN
                      │
           UxPlay + GStreamer, ohne Root
            ├─ I420-Frames → Shared Memory → MGU-Renderer → iDrive-Display
@@ -138,7 +138,8 @@ an den Renderer übergeben.
 ## Direkte Video-/HLS-Wiedergabe
 
 Bei direkter Wiedergabe erhält der Empfänger die Mediensteuerung und
-holt die Videodaten selbst. Deshalb benötigt die MGU Internet und DNS;
+holt die Videodaten selbst. Das gilt auch für ein Video, das während der
+Bildschirmspiegelung in den HLS-Modus wechselt. Deshalb benötigt die MGU Internet und DNS;
 eine funktionierende lokale Spiegelung allein beweist diesen Zugang nicht.
 
 YouTube verwendet einen FCUP-Austausch für Playlists. UxPlay stellt
@@ -212,10 +213,14 @@ Das Backend wurde unter der App-UID mit CapEff=0 und NoNewPrivs=1 geprüft.
 
 Nur der Backend-Namespace erhält die Uplink-DNS-Server. Die globale
 BMW-resolv.conf bleibt unverändert. Die private Resolverdatei wird
-aus der Uplink-Lease aktualisiert; ihre Inode bleibt für den Bind-Mount erhalten.
+aus der Uplink-Lease aktualisiert und bei entfallener Lease auf den lokalen
+Offline-Resolver zurückgesetzt; ihre Inode bleibt für den Bind-Mount erhalten.
 
 Der Netzwerk-Helfer bearbeitet nur die eigenen markierten Regeln für
-die festen AirPlay-Ports und lokalen WLAN-Netze. Er ersetzt keine
+die festen AirPlay-Ports und lokalen WLAN-Netze auf wlan_bridge, wlan0 und
+wlan1. Der Root-Supervisor gleicht die Regeln regelmäßig ab, auch wenn der
+Uplink seine Tabelle beim Verbindungswechsel neu erstellt. Unveränderte
+Regeln werden nicht neu geschrieben. Er ersetzt keine
 globale Firewall-Policy und keine BMW-Default-Route.
 
 Für HTTPS wird der private CA-Store beim TLS-Backend registriert.

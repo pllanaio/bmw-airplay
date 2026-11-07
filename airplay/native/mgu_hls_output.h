@@ -37,5 +37,4 @@ static void mgu_hls_output(GstElement *player) {
     flags &= ~GST_PLAY_FLAG_DOWNLOAD; /* No unbounded on-disk video cache. */
     flags |= (1 << 12); /* GST_PLAY_FLAG_FORCE_SW_DECODERS */
     g_object_set(player, "flags", flags, NULL);
-    g_print("MGU_MODE hls\n"); fflush(stdout);
 }

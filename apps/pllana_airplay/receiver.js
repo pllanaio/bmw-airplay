@@ -67,10 +67,15 @@ class Receiver extends EventEmitter {
         const file = '/dev/shm/mgu-video-airplay-' + uid + '-' + process.pid + '-' + (++this.session);
         const audio = this.options.audioSink;
         if (!audio) { this.update({ phase: 'error', error: 'audio_not_configured' }); return false; }
+        // Without receiver Internet, YouTube must keep sending mirrored
+        // pixels over the BMW WLAN instead of handing us unreachable CDN URLs.
+        // Decide per session; never restart an active stream on a lease change.
+        const directVideo = typeof this.options.hls === 'function' ? this.options.hls() : this.options.hls !== false;
         const access = passwordMode ? ['-pw', pin] : ['-pin', pin, '-reg', register];
         const args = [loader, '--library-path', path.join(this.runtime, 'lib'), uxplay,
             '-n', 'BMW AirPlay by pllana.io', '-nh', '-m', device].concat(access).concat(['-s', '1280x720@30', '-fps', '30',
-            '-avdec', '-hls', '2', '-lang', '0', '-vs', 'mguvideosink location=' + file, '-as', audio, '-p', '7100']);
+            '-avdec']).concat(directVideo ? ['-hls', '2', '-lang', '0'] : []).concat([
+            '-vs', 'mguvideosink location=' + file, '-as', audio, '-p', '7100']);
         const env = Object.assign({}, process.env, {
             HOME: this.dataDir, XDG_CACHE_HOME: this.dataDir,
             GST_PLUGIN_SYSTEM_PATH_1_0: '', GST_PLUGIN_PATH_1_0: path.join(this.runtime, 'plugins'),
@@ -92,7 +97,7 @@ class Receiver extends EventEmitter {
         try { child = this.spawn(launcher, args, { env, cwd: this.dataDir, detached: true, stdio: ['ignore', 'pipe', 'pipe'] }); }
         catch (e) { this.update({ phase: 'error', error: 'launch_failed', pin: '' }); return false; }
         this.child = child; this.features = {};
-        this.update({ phase: 'starting', detached: false, mode: 'mirror', returnMode: 'waiting', pin, file, frame: null, error: null, audioError: null, audio: audio !== 'fakesink' });
+        this.update({ phase: 'starting', directVideo, detached: false, mode: 'mirror', returnMode: 'waiting', pin, file, frame: null, error: null, audioError: null, audio: audio !== 'fakesink' });
         // Node 8 has no ChildProcess "spawn" event. spawn() already returns
         // a pid on success; still handle its asynchronous error event below.
         if (child.pid) this.update({ phase: 'waiting' });
@@ -106,7 +111,7 @@ class Receiver extends EventEmitter {
                 const st = fs.lstatSync(file);
                 if (st.isFile() && !st.isSymbolicLink() && st.nlink === 1 && st.uid === uid) fs.unlinkSync(file);
             } catch (e) {}
-            this.update({ phase: error ? 'error' : 'stopped', mode: null, pin: '', frame: null, file: '', error: error || null });
+            this.update({ phase: error ? 'error' : 'stopped', mode: null, detached: false, pin: '', frame: null, file: '', error: error || null });
             this.emit('ended');
         };
         child.once('error', () => finish('launch_failed'));
@@ -137,13 +142,18 @@ class Receiver extends EventEmitter {
                         .split(this.state.pin || '\0').join('<code>').slice(0, 300);
                     this.emit('diagnostic', safe);
                 }
-                if (line === 'MGU_CONN 0') {
+                // HLS fetches media independently. Losing the phone's last
+                // control/mirror socket must not blank a still-running video.
+                if (line === 'MGU_CONN 0' && this.state.mode !== 'hls') {
                     hideOldFrame();
                     wasMirroring = false;
                     this.update({ phase: 'waiting', frame: null, returnMode: 'waiting' });
                 }
                 if (line === 'MGU_MODE waiting') {
                     hideOldFrame();
+                    // A later direct video needs a fresh mirror packet. Keep
+                    // returnMode for the UI's transition until that packet arrives.
+                    wasMirroring = false;
                     this.update({ phase: 'waiting', mode: 'waiting', frame: null, detached: false });
                 }
                 if (line === 'MGU_MEDIA_LOADING') {
@@ -153,7 +163,8 @@ class Receiver extends EventEmitter {
                 if (line === 'MGU_MEDIA_PLAY') this.emit('media', 'hls');
                 // Runtime 0.4.2+: detached video (see airplay/tools/patch_detach.py).
                 if (line === 'MGU_FEATURES detach') this.features.detach = true;
-                if (line === 'MGU_MEDIA_DETACHED') { this.update({ detached: true }); this.emit('diagnostic', 'video_detached_from_phone'); }
+                if (line === 'MGU_FEATURES native-detach') this.features.nativeDetach = true;
+                if (line === 'MGU_MEDIA_DETACHED' && this.state.mode === 'hls') { this.update({ detached: true }); this.emit('diagnostic', 'video_detached_from_phone'); }
                 if (line === 'MGU_PHONE_STOP_IGNORED' || line === 'MGU_PHONE_PAUSE_IGNORED') this.emit('diagnostic', line.toLowerCase());
                 if (line === 'MGU_MEDIA_REJECTED')
                     this.update({ phase: 'waiting', frame: null, error: 'media_unsupported' });
