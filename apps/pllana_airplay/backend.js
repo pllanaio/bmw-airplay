@@ -5,6 +5,7 @@ resolver.refresh();
 setInterval(() => resolver.refresh(), 2000).unref();
 const fs = require('fs'), net = require('net'), path = require('path');
 const { Receiver } = require('./receiver');
+const { MusicControls } = require('./music_controls');
 const { AudioRoute, AUDIO_SINK } = require('./audio_route');
 const signals = require('./kit/signals');
 const root = path.resolve(__dirname, '..', '..');
@@ -17,6 +18,64 @@ if (fs.existsSync(socketPath)) {
     fs.unlinkSync(socketPath);
 }
 const receiver = new Receiver({ dataDir: data, runtime: process.env.MGU_AIRPLAY_RUNTIME || (fs.existsSync('/var/opt/pllana-airplay-receiver/current/runtime') ? '/var/opt/pllana-airplay-receiver/current/runtime' : '/var/opt/mgu-airplay/current/runtime'), audioSink: AUDIO_SINK, authentication: 'password', hls: () => resolver.hasUplink() });
+const music = new MusicControls({
+    directory: () => receiver.musicDirectory,
+    resolveBinary: [path.join(receiver.runtime, 'lib/ld-linux-x86-64.so.2'), '--library-path', path.join(receiver.runtime, 'lib'), path.join(receiver.runtime, 'bin/mgu-dacp-resolve')],
+    onState: remote => {
+        if (!receiver.child || receiver.state.profile !== 'audio' || !receiver.state.music) return;
+        const next = Object.assign({}, receiver.state.music, remote);
+        if (remote.epoch !== receiver.state.music.epoch) next.controlError = null;
+        receiver.update({ music: next });
+    },
+});
+let musicPolling = false, musicQueued = 0, musicQueue = Promise.resolve();
+function pollMusic() {
+    if (musicPolling) return;
+    musicPolling = true;
+    Promise.resolve().then(() => music.poll()).catch(() => {}).then(() => { musicPolling = false; });
+}
+receiver.on('music-directory', () => { music.clear(); pollMusic(); });
+function musicRequest(request) {
+    const action = request.action, value = request.value;
+    const transport = action === 'playPause' || action === 'next' || action === 'previous';
+    return typeof request.epoch === 'string' && request.epoch.length > 0 && request.epoch.length <= 128 &&
+        !/[\x00-\x1f\x7f]/.test(request.epoch) &&
+        ((transport && (value === undefined || value === null)) ||
+         (action === 'shuffle' && (value === 0 || value === 1)) ||
+         (action === 'repeat' && Number.isInteger(value) && value >= 0 && value <= 2));
+}
+function currentMusicRequest(request) {
+    const current = receiver.state.music;
+    return receiver.child && receiver.state.profile === 'audio' && current && current.epoch === request.epoch &&
+        current.controls && current.controls[request.action] === true;
+}
+function musicError(code) {
+    if (receiver.state.music) receiver.update({ music: Object.assign({}, receiver.state.music, { controlError: code }) });
+}
+function remoteMusic(request) {
+    if (!currentMusicRequest(request)) { musicError('music_control_stale'); return; }
+    if (musicQueued >= 4) { musicError('music_control_busy'); return; }
+    musicQueued++;
+    const run = async () => {
+        if (shuttingDown || !currentMusicRequest(request)) { musicQueued--; return; }
+        const directory = receiver.musicDirectory;
+        let timeout;
+        try {
+            // Even a broken remote endpoint cannot hold up stop/close and
+            // subsequent commands indefinitely. The module also bounds I/O.
+            await Promise.race([
+                music.execute(request.action, request.value, request.epoch),
+                new Promise((resolve, reject) => { timeout = setTimeout(() => reject(Error('music_timeout')), 5500); }),
+            ]);
+            if (directory === receiver.musicDirectory && currentMusicRequest(request)) musicError(null);
+        } catch (e) {
+            if (directory === receiver.musicDirectory && currentMusicRequest(request)) musicError('music_control_failed');
+        } finally { clearTimeout(timeout); musicQueued--; }
+    };
+    // Remote phone requests have their own serialized queue. A slow phone
+    // must never delay the driver's receiver stop or a profile change.
+    musicQueue = musicQueue.then(run, run);
+}
 const diagnostics = [];
 receiver.on('diagnostic', code => {
     diagnostics.push({ time: new Date().toISOString(), code });
@@ -26,26 +85,26 @@ receiver.on('diagnostic', code => {
 const route = new AudioRoute(signals);
 // A frontend that disappears (app manager restart, stalled event loop, HMI
 // focus change) no longer ends the phone's AirPlay session immediately. Only
-// an explicit stop/close does; otherwise the receiver keeps running for a
-// grace period and a reconnecting frontend simply resumes it.
+// an explicit stop/close does. Video has a grace period; selected audio-only
+// reception survives a UI restart or leaving the app until explicit stop.
 const DISCONNECT_GRACE_MS = 30000, HEARTBEAT_TIMEOUT_MS = 12000;
 // An unexpected receiver exit (native crash after a failed media download,
 // pipeline error) restarts it with the same password and backoff.
 const RESTART_DELAYS_MS = [1000, 2000, 4000, 8000, 15000], STABLE_MS = 60000;
 let queue = Promise.resolve(), client = null, heartbeat = 0, shuttingDown = false, intentionalStop = false, checking = false;
 let wanted = false, graceTimer = null, restartTimer = null, stableTimer = null, failures = 0;
+let selectedProfile = 'video';
 const enqueue = fn => { queue = queue.then(fn, fn).catch(() => send({ phase: 'error', error: 'backend_operation_failed', pin: '', frame: null })); return queue; };
 async function ensureAudio() {
-    if (!receiver.child || !client || shuttingDown || route.owned) return;
+    if (!receiver.child || (!client && selectedProfile !== 'audio') || shuttingDown || route.owned) return;
     try { await route.acquire(); receiver.update({ audio: true, audioError: null }); }
     catch (e) { receiver.update({ audio: false, audioError: 'audio_unavailable' }); }
 }
 receiver.on('media', () => enqueue(ensureAudio));
-// New runtimes detach a video at the native mirror -> HLS transition, before
-// the iPhone can cancel it by backgrounding YouTube. Signal immediately as a
-// fallback for the 0.4.2 runtime; it explicitly advertises SIGUSR1 support.
+// Only the historical runtime needs this fallback. Origin-aware runtimes
+// own phone controls and the return destination; never force their detach.
 receiver.on('media', mode => {
-    if (mode === 'hls' && !(receiver.features && receiver.features.nativeDetach) &&
+    if (mode === 'hls' && !(receiver.features && (receiver.features.nativeDetach || receiver.features.videoModes || receiver.features.mediaStop)) &&
         receiver.state.returnMode === 'mirror' && !receiver.state.detached) receiver.detach();
 });
 function send(state) {
@@ -65,7 +124,7 @@ async function stop() {
 function startReceiver(keepPassword) {
     clearTimeout(restartTimer); restartTimer = null;
     resolver.refresh();
-    if (!receiver.start(keepPassword ? { keepPassword: true } : undefined)) return false;
+    if (!receiver.start({ profile: selectedProfile, keepPassword: !!keepPassword })) return false;
     clearTimeout(stableTimer);
     stableTimer = setTimeout(() => { stableTimer = null; if (receiver.child) failures = 0; }, STABLE_MS);
     receiver.update({ audio: false });
@@ -105,29 +164,46 @@ const server = net.createServer(s => {
             let request; try { request = JSON.parse(line); } catch (e) { s.destroy(); return; }
             if (!request || typeof request.command !== 'string') { s.destroy(); return; }
             heartbeat = Date.now();
-            if (request.command === 'start') enqueue(async () => {
-                if (shuttingDown) return;
-                if (receiver.child) { wanted = true; await ensureAudio(); return; }
-                if (s !== client || s.destroyed) return;
-                // A manual start during a pending recovery starts at once and
-                // keeps the password the phone already knows.
-                const recovering = !!restartTimer;
-                failures = 0;
-                // Discovery and pairing must work even while another BMW
-                // source owns the speaker route. Retry audio on media/start.
-                if (startReceiver(recovering)) {
-                    wanted = true;
-                    await ensureAudio();
-                }
-            });
+            if (request.command === 'start') {
+                const profile = request.profile === undefined ? 'video' : request.profile;
+                if (profile !== 'video' && profile !== 'audio') { s.destroy(); return; }
+                enqueue(async () => {
+                    if (shuttingDown) return;
+                    if (s !== client || s.destroyed) return;
+                    if (receiver.child && selectedProfile === profile) { wanted = true; await ensureAudio(); return; }
+                    // A manual start during a pending recovery starts at once and
+                    // keeps the password the phone already knows. Changing the
+                    // advertised audio/video capabilities deliberately restarts
+                    // the receiver too, retaining that same pairing password.
+                    const switching = selectedProfile !== profile && (receiver.child || wanted || restartTimer);
+                    const keepPassword = !!restartTimer || !!switching;
+                    if (switching) await stop();
+                    if (shuttingDown || ((s !== client || s.destroyed) && profile !== 'audio')) return;
+                    selectedProfile = profile;
+                    if (profile === 'audio') { clearTimeout(graceTimer); graceTimer = null; }
+                    failures = 0;
+                    // Discovery and pairing must work even while another BMW
+                    // source owns the speaker route. Retry audio on media/start.
+                    if (startReceiver(keepPassword)) {
+                        wanted = true;
+                        await ensureAudio();
+                    }
+                });
+            }
             else if (request.command === 'stop') enqueue(stop);
+            else if (request.command === 'end-video') receiver.endVideo();
             else if (request.command === 'resume-mirror') receiver.resumeMirror();
+            else if (request.command === 'music-control') {
+                if (!musicRequest(request)) { s.destroy(); return; }
+                remoteMusic(request);
+            }
             else if (request.command !== 'heartbeat') { s.destroy(); return; }
         }
     });
     s.on('close', () => {
         if (client !== s) return;
         client = null;
+        if (selectedProfile === 'audio' && wanted) return;
         if (!receiver.child && !restartTimer) { enqueue(stop); return; }
         clearTimeout(graceTimer);
         graceTimer = setTimeout(() => { graceTimer = null; if (!client) enqueue(stop); }, DISCONNECT_GRACE_MS);
@@ -150,6 +226,7 @@ const timer = setInterval(() => {
         return;
     }
     if (client && Date.now() - heartbeat > HEARTBEAT_TIMEOUT_MS) client.destroy();
+    pollMusic();
     if (receiver.child && !checking && !shuttingDown) {
         checking = true;
         enqueue(async () => {
@@ -168,6 +245,7 @@ const timer = setInterval(() => {
 function shutdown(code) {
     if (shuttingDown) return;
     shuttingDown = true; clearInterval(timer); clearTimeout(graceTimer); clearTimeout(restartTimer); clearTimeout(stableTimer);
+    music.close();
     if (client) client.destroy();
     server.close();
     const hard = setTimeout(() => process.exit(1), 12000);

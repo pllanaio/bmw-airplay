@@ -13,7 +13,11 @@ assert(initial.some(line => /iifname "wlan_bridge" ip saddr .* tcp dport 7100-71
 assert(initial.some(line => /iifname "wlan0"/.test(line)), 'legacy hotspot station retained');
 assert(initial.some(line => /iifname "wlan1"/.test(line)), 'second uplink station supported');
 assert.deepStrictEqual(WLAN, ['wlan_bridge', 'wlan0', 'wlan1']);
-assert(initial.every(line => /(?:tcp|udp) (?:sport|dport) 7100-7102/.test(line)), 'only receiver transport ports');
+assert(initial.every(line => /(?:tcp|udp) (?:sport|dport) 7100-7102/.test(line) ||
+    /oifname .* meta skuid 13007 tcp dport 1024-65535/.test(line)), 'only receiver transport or app-owned local DACP egress');
+assert(initial.filter(line => /tcp dport 1024-65535/.test(line)).every(line =>
+    /oifname "(?:wlan_bridge|wlan0|wlan1)" (?:ip|ip6) daddr (?:10\.0\.0\.0\/8|172\.16\.0\.0\/12|192\.168\.0\.0\/16|169\.254\.0\.0\/16|fe80::\/10|fc00::\/7) meta skuid 13007/.test(line)),
+    'DACP cannot reach public/privileged ports or change incoming policy');
 assert(initial.filter(line => /oifname/.test(line)).every(line => /meta skuid 13007/.test(line)), 'outbound exceptions restricted to app UID');
 assert(!initial.some(line => /forward|policy|flush|vethuplink|eth0|5353/.test(line)), 'no global or USB forwarding/discovery exceptions');
 assert.deepStrictEqual(plan('apply', uid, installed({}), {}), [], 'counter changes never trigger a firewall rewrite');
@@ -39,6 +43,7 @@ for (const chain of ipv6) chain.text = chain.text.replace(/2001:db8:0:0::\/64/g,
 assert.deepStrictEqual(plan('apply', uid, ipv6, addresses), [], 'canonical IPv6 prefixes compare equal');
 const changed = plan('apply', uid, installed({}), addresses);
 assert(changed.length > 0 && changed.every(line => !/^\w+ rule ip filter /.test(line)), 'IPv4 chains unchanged by IPv6 address change');
+assert(!changed.some(line => /2001:db8/.test(line) && /tcp dport 1024-65535/.test(line)), 'global IPv6 prefixes gain no DACP egress');
 const removal = plan('remove', NaN, installed({}), {});
 assert(removal.length > 0 && removal.every(line => /^delete rule .* handle \d+$/.test(line)), 'remove deletes only tagged handles');
 assert.throws(() => plan('apply', 0, empty(), {}), /invalid_receiver_uid/);

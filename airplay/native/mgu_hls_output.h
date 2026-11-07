@@ -14,15 +14,17 @@ static void mgu_hls_output(GstElement *player) {
     GstElement *audio = gst_parse_bin_from_description(description, TRUE, &error);
     if (error || !audio) g_error("MGU HLS audio pipeline could not be created");
     g_object_set(player, "audio-sink", audio, NULL);
-    /* Bound frame copies/textures to 720p; letterbox rather than stretch.
-       One combined convert+scale pass (GStreamer 1.22 videoconvertscale)
-       instead of two full-frame passes, spread over two threads: software
-       scaling of 1080p YouTube renditions was the main cause of dropped
-       frames on the head unit CPU. A 720p I420 source passes through. */
+    /* Fill the HU's 1920x504 video surface. Crop centrally at the source
+       aspect before scaling; baking a 16:9 letterbox into each frame would
+       leave permanent bars even when the renderer uses a cover crop.
+       Explicit raw input caps let aspectratiocrop link before playbin has
+       connected its decoded source. One combined convert+scale pass keeps the
+       output near the previous 720p pixel budget (968k versus 922k pixels). */
     GstElement *filter = gst_parse_bin_from_description(
-        "queue max-size-buffers=3 max-size-bytes=0 max-size-time=0 leaky=no ! "
-        "videoconvertscale add-borders=true n-threads=2 dither=none method=bilinear ! "
-        "capsfilter caps=\"video/x-raw,format=I420,width=1280,height=720,pixel-aspect-ratio=1/1\"",
+        "queue max-size-buffers=3 max-size-bytes=0 max-size-time=0 leaky=no ! video/x-raw ! "
+        "aspectratiocrop aspect-ratio=80/21 ! "
+        "videoconvertscale add-borders=false n-threads=2 dither=none method=bilinear ! "
+        "capsfilter caps=\"video/x-raw,format=I420,width=1920,height=504,pixel-aspect-ratio=1/1\"",
         TRUE, &error);
     if (error || !filter) g_error("MGU HLS video filter could not be created");
     g_object_set(player, "video-filter", filter, NULL);

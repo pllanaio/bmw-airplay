@@ -80,6 +80,7 @@ static bool mgu_direct_play(raop_conn_t *conn, http_request_t *request, http_res
     /* Negative values encode a standard fractional Start-Position internally;
        no change is made to the external AirPlay protocol. */
     float position = seconds ? (float)start : (start > 0.0 && start <= 1.0 ? -(float)start : 0.0f);
+    if (raop->callbacks.on_video_loading) raop->callbacks.on_video_loading(raop->callbacks.cls);
     raop->callbacks.on_video_play(raop->callbacks.cls, location, position);
     plist_mem_free(location);
     http_response_init(response, "HTTP/1.1", 200, "OK");

@@ -8,7 +8,7 @@ einem separat installierten UxPlay-Empfänger und BMW-Audiorouting.
 Die bisherige Erprobung ist keine Freigabe für alle MGU-Hardwarestände,
 Fahrzeugausstattungen, iPhone-Apps oder iOS-Versionen.
 
-Der vorbereitete Quellstand für App und Laufzeit ist **0.4.3**. Die neuen
+Der vorbereitete Quellstand für App und Laufzeit ist **0.4.4**. Die neuen
 Änderungen sind lokal geprüft, noch nicht am Fahrzeug abgenommen. Die
 Fahrzeugbestätigungen weiter unten beziehen sich auf die dort genannten
 älteren Versionen.
@@ -16,6 +16,32 @@ Fahrzeugbestätigungen weiter unten beziehen sich auf die dort genannten
 Der historische Git-Tag v0.2.6 bezeichnet den ersten veröffentlichten
 Quellcode-Snapshot. Die nachträgliche Store-Anbindung und diese ausführliche
 Dokumentation stehen auf main. Der Tag wird dafür nicht nachträglich verschoben.
+
+## Änderungen in 0.4.4 – stoppbare Videomodi und reines Audio
+
+- Ausdrückliche Stop-/Pause-/Medien-Teardown-Anfragen werden respektiert.
+  Die bisherige Entkopplung darf bewusste Bedienung nicht übergehen.
+- Der tatsächliche Ursprung bestimmt das Rückkehrziel: Video aus Spiegelung
+  kehrt zu dieser zurück; direktes Video wartet auf einen neuen Inhalt.
+  Alte Spiegelungspakete übernehmen den Direktmodus nicht unbeabsichtigt.
+- „Video beenden“ beendet den Inhalt ohne vollständiges Trennen.
+- Videos füllen die 1920×504-Fläche durch zentrierten Beschnitt statt
+  zusätzlicher Ränder. Normale Bildschirmspiegelung behält ihr vollständiges Bild.
+- „Nur Audio“ startet den Empfänger ohne Video/HLS und ohne Ankündigung
+  von Bildschirmspiegelung. RAOP-Musik bleibt nach Ende der Oberfläche aktiv.
+  Ein ausdrückliches „Trennen“ oder „Schließen“ beendet den Empfang.
+- Musikansicht mit Cover, Titel, Interpret und Album aus AirPlay-Metadaten.
+  Play/Pause, vorheriger/nächster Titel, Shuffle und Repeat werden über den
+  authentifizierten Sender gesteuert, wenn dessen DACP-Fähigkeiten bestätigt sind.
+  Shuffle und Repeat zeigen ausschließlich abgefragte Zustände.
+- Lokale Prüfungen umfassen beide Videomodi, echte Stop-/Pause-Steuerung,
+  Audiofähigkeiten, tatsächliche ALAC-Dekodierung vor/nach Stop/Neustart,
+  Metadaten-/Cover-Verarbeitung und DACP-Befehle mit Sitzungswechseln.
+
+Die Fahrzeugabnahme mit YouTube, Spotify und YouTube Music steht aus.
+Identische Stop-Anfragen enthalten keinen Nachweis, ob die iPhone-App in
+Hintergrund ging oder der Benutzer stoppte; der Empfänger respektiert sie.
+[Modi und Testmatrix](MEDIA_MODES.md). Beide Pakete auf 0.4.4 aktualisieren.
 
 ## Änderungen in 0.4.3 – BMW-WLAN und Video aus der Spiegelung
 
@@ -236,7 +262,7 @@ YouTube-/ARD-Wechsels. Dieser Ablauf muss ausdrücklich erneut getestet werden.
 ### P2 – Breite Videos und Startlast
 
 Breite YouTube-Videos führten in früheren Versuchen zu Ruckeln, Einfrieren
-oder Abbruch. Die Ausgabe wird inzwischen auf I420/1280×720 begrenzt,
+oder Abbruch. Die Ausgabe wird ab 0.4.4 auf I420/1920×504 begrenzt,
 vorab gepuffert und mit einer Bandbreitenempfehlung gestartet.
 
 Die Empfehlung ist **keine harte Eingangsauflösungs- oder Codec-Grenze**.
@@ -262,8 +288,8 @@ Lautsprecherzuordnung und das Verhalten bei wechselndem Internetzugang.
 - Kein Ersatz der BMW-System-DNS-Konfiguration.
 - Keine automatische CarPlay-Deaktivierung.
 - Kein allgemeiner Root-/SSH-Installer.
-- Keine im Repository veröffentlichte native Laufzeit mit vollständigem
-  öffentlichem Tool-Katalog und Ein-Klick-Installation.
+- Keine allgemeine Hardwarefreigabe durch die Veröffentlichung der
+  App-/Empfängerpakete im Store-Katalog.
 
 Die öffentlich sichtbaren Quellen dokumentieren den tatsächlichen
 Entwicklungsstand einschließlich seiner Grenzen.

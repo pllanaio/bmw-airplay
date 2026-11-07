@@ -198,6 +198,17 @@ int main(void) {
     const char body_ack[] = "HTTP/1.1 200 OK\r\nContent-Length: 3\r\n\r\nx";
     send_all(reverse, body_ack, sizeof body_ack - 1); no_event(reverse);
     send_all(reverse, "yz", 2); item = event(reverse, "type", "bodySecond"); plist_free(item); ack(reverse); no_event(reverse);
+    /* Ending media drains the already transmitted request but cancels unsent
+       auto-next notifications. The same PTTH/control sockets remain usable;
+       a delayed ACK cannot accidentally acknowledge the next video's event. */
+    queue_fixture(server, "stopInFlight"); queue_fixture(server, "cancelNext");
+    item = event(reverse, "type", "stopInFlight"); plist_free(item);
+    raop_playlist_stop(server);
+    assert(server->mgu_playlist_cancelled && server->current_video == -1);
+    queue_fixture(server, "afterStop"); no_event(reverse);
+    ack(reverse); item = event(reverse, "type", "afterStop"); plist_free(item); ack(reverse); no_event(reverse);
+    request(control, "GET", "/playback-info", NULL, &body); free(body);
+    play_item(control, "cccccccc-1111-4222-8333-444444444444", true); assert(plays == 5);
     /* Cancelling an in-flight request closes that stream, so a stale ACK can
        never release an unrelated event subsequently sent on the same socket. */
     queue_fixture(server, "cancelled"); item = event(reverse, "type", "cancelled"); plist_free(item);
@@ -216,6 +227,6 @@ int main(void) {
     request(control, "GET", "/playback-info", NULL, &body); free(body);
     shutdown(control, SHUT_RDWR); close(control);
     raop_stop_httpd(server); raop_destroy(server); unlink(keyfile); assert(rmdir(temporary) == 0);
-    puts("Playlist sender: three items on retained session, split header/body ACK FIFO, terminal clock, replay, cancellation, reconnect, expiry and busy-control HLS responsiveness passed");
+    puts("Playlist sender: retained sessions, split ACK FIFO, terminal clock, replay, media stop with retained PTTH/drained ACK, cancellation, reconnect, expiry and busy-control HLS responsiveness passed");
     return 0;
 }

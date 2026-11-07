@@ -3,13 +3,16 @@ const EventEmitter = require('events'), net = require('net');
 class BackendClient extends EventEmitter {
     constructor(socketPath) {
         super(); this.path = socketPath; this.socket = null; this.retry = null; this.timer = null; this.closed = false;
-        this.state = { phase: 'stopped', pin: '', frame: null, file: '', audio: true, error: null };
+        this.state = { phase: 'stopped', profile: 'video', mode: null, origin: null, supportsVideoStop: false, pin: '', frame: null, file: '', audio: true, error: null };
     }
     update(s) { this.state = Object.assign({}, this.state, s); this.emit('state', this.state); }
     connect() {
         if (this.closed || this.socket) return;
         const s = net.createConnection(this.path); this.socket = s; s.setEncoding('utf8'); let pending = '';
-        s.on('connect', () => { this.timer = setInterval(() => this.command('heartbeat'), 2000); });
+        s.on('connect', () => {
+            if (this.closed) { s.end(); return; }
+            this.timer = setInterval(() => this.command('heartbeat'), 2000);
+        });
         s.on('data', chunk => {
             pending += chunk;
             if (pending.length > 32768) { s.destroy(); return; }
@@ -29,17 +32,42 @@ class BackendClient extends EventEmitter {
             if (!this.closed) this.retry = setTimeout(() => { this.retry = null; this.connect(); }, 500);
         });
     }
-    command(command) {
-        if (!this.socket || this.socket.destroyed || this.socket.connecting) return false;
-        this.socket.write(JSON.stringify({ command }) + '\n'); return true;
+    command(command, fields) {
+        if (this.closed || !this.socket || this.socket.destroyed || this.socket.connecting) return false;
+        this.socket.write(JSON.stringify(Object.assign({}, fields || {}, { command })) + '\n'); return true;
     }
-    start() { return this.command('start'); }
+    start(profile) {
+        profile = profile === undefined ? 'video' : profile;
+        if (profile !== 'video' && profile !== 'audio') return false;
+        return this.command('start', { profile });
+    }
+    musicControl(action, value) {
+        const music = this.state.music;
+        if (this.state.profile !== 'audio' || !music || !music.controls || music.controls[action] !== true ||
+            typeof music.epoch !== 'string' || !music.epoch || music.epoch.length > 128) return false;
+        const transport = action === 'playPause' || action === 'next' || action === 'previous';
+        if (!(transport && (value === undefined || value === null)) &&
+            !(action === 'shuffle' && (value === 0 || value === 1)) &&
+            !(action === 'repeat' && Number.isInteger(value) && value >= 0 && value <= 2)) return false;
+        const fields = { action, epoch: music.epoch };
+        if (value !== undefined) fields.value = value;
+        return this.command('music-control', fields);
+    }
+    endVideo() {
+        if (!this.state.supportsVideoStop || this.state.profile === 'audio' ||
+            (this.state.mode !== 'hls' && this.state.phase !== 'loading' && !this.state.playlistPending)) return false;
+        return this.command('end-video');
+    }
     resumeMirror() { return this.command('resume-mirror'); }
     stop() { this.command('stop'); return Promise.resolve(); }
-    destroy() {
+    // Losing the UI is distinct from the driver's explicit disconnect. The
+    // backend keeps an audio-only session alive after this socket closes.
+    disconnect() {
         this.closed = true; clearTimeout(this.retry); clearInterval(this.timer);
-        this.command('stop'); if (this.socket) this.socket.end();
+        this.retry = this.timer = null;
+        if (this.socket && !this.socket.destroyed) this.socket.end();
         return Promise.resolve();
     }
+    destroy() { this.command('stop'); return this.disconnect(); }
 }
 module.exports = { BackendClient };

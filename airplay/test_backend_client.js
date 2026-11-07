@@ -1,0 +1,72 @@
+'use strict';
+const assert = require('assert'), fs = require('fs'), path = require('path'), vm = require('vm'), EventEmitter = require('events');
+const sockets = [], intervals = new Set(), retries = new Set();
+const fakeNet = { createConnection() {
+    const socket = new EventEmitter(); socket.connecting = true; socket.destroyed = false; socket.writes = []; socket.ends = 0;
+    socket.setEncoding = () => {};
+    socket.write = text => socket.writes.push(JSON.parse(text));
+    socket.end = () => { socket.ends++; socket.destroyed = true; socket.emit('close'); };
+    socket.destroy = () => { socket.destroyed = true; socket.emit('close'); };
+    sockets.push(socket); return socket;
+} };
+const context = {
+    require: name => name === 'net' ? fakeNet : require(name), module: { exports: {} },
+    setInterval: fn => { intervals.add(fn); return fn; }, clearInterval: fn => intervals.delete(fn),
+    setTimeout: fn => { retries.add(fn); return fn; }, clearTimeout: fn => retries.delete(fn),
+};
+vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../apps/pllana_airplay/backend_client.js'), 'utf8'), context);
+const { BackendClient } = context.module.exports;
+(async () => {
+    const client = new BackendClient('/private/control.sock'); client.connect();
+    const socket = sockets[0];
+    assert.strictEqual(client.start('audio'), false, 'a connecting socket cannot accept a command');
+    socket.connecting = false; socket.emit('connect');
+    assert(client.start());
+    assert.deepStrictEqual(socket.writes.pop(), { command: 'start', profile: 'video' });
+    assert(client.start('audio'));
+    assert.deepStrictEqual(socket.writes.pop(), { command: 'start', profile: 'audio' });
+    assert.strictEqual(client.start('other'), false);
+    assert.strictEqual(socket.writes.length, 0, 'invalid profile is never sent');
+    socket.emit('data', '{"state":{"profile":"audio","mode":"audio","supportsVideoStop":true}}\n');
+    assert.strictEqual(client.endVideo(), false, 'video stop cannot be sent in audio-only mode');
+    socket.emit('data', '{"state":{"music":{"epoch":"sender-1","controls":{"playPause":true,"next":true,"previous":true,"shuffle":true,"repeat":true},"shuffle":0,"repeat":1,"playbackState":"playing"}}}\n');
+    assert(client.musicControl('next')); assert.deepStrictEqual(socket.writes.pop(), {command:'music-control',action:'next',epoch:'sender-1'});
+    assert(client.musicControl('shuffle',1)); assert.deepStrictEqual(socket.writes.pop(), {command:'music-control',action:'shuffle',value:1,epoch:'sender-1'});
+    assert(client.musicControl('repeat',2)); assert.deepStrictEqual(socket.writes.pop(), {command:'music-control',action:'repeat',value:2,epoch:'sender-1'});
+    assert.strictEqual(client.state.music.shuffle, 0, 'sending a desired setting does not invent a confirmed sender state');
+    assert.strictEqual(client.state.music.repeat, 1);
+    assert.strictEqual(client.musicControl('repeat','all'), false);
+    assert.strictEqual(client.musicControl('shuffle',true), false);
+    assert.strictEqual(client.musicControl('/arbitrary/path'), false);
+    assert.strictEqual(client.musicControl('next',1), false);
+    socket.emit('data', '{"state":{"music":{"epoch":"sender-2","controls":{"next":true,"shuffle":false}}}}\n');
+    assert.strictEqual(client.musicControl('shuffle',1), false);
+    assert(client.musicControl('next')); assert.strictEqual(socket.writes.pop().epoch,'sender-2','commands carry the current paired sender epoch');
+    socket.emit('data', '{"state":{"profile":"video","mode":"hls","origin":"direct","supportsVideoStop":true}}\n');
+    assert.strictEqual(client.state.origin, 'direct');
+    assert(client.endVideo());
+    assert.deepStrictEqual(socket.writes.pop(), { command: 'end-video' });
+    socket.emit('data', '{"state":{"mode":"waiting","phase":"loading"}}\n');
+    assert(client.endVideo(), 'early FCUP loading sends the current-video stop command');
+    assert.deepStrictEqual(socket.writes.pop(), { command: 'end-video' });
+    socket.emit('data', '{"state":{"phase":"waiting"}}\n');
+    assert(client.resumeMirror()); assert.deepStrictEqual(socket.writes.pop(), { command: 'resume-mirror' });
+    socket.emit('data', '{"state":{"mode":"waiting","playlistPending":true}}\n');
+    assert(client.endVideo(), 'the waiting gap between titles can be cancelled');
+    socket.writes.pop();
+    socket.emit('data', '{"state":{"playlistPending":false,"supportsVideoStop":false}}\n');
+    assert.strictEqual(client.endVideo(), false, 'an old runtime cannot get the new signal');
+    await client.stop(); assert.deepStrictEqual(socket.writes.pop(), { command: 'stop' });
+    await client.disconnect();
+    assert.strictEqual(socket.writes.length, 0, 'losing the UI does not send an implicit receiver stop');
+    assert.strictEqual(socket.ends, 1);
+    assert.strictEqual(intervals.size, 0); assert.strictEqual(retries.size, 0);
+    assert.strictEqual(client.start('audio'), false);
+    const explicit = new BackendClient('/private/control.sock'); explicit.connect();
+    const second = sockets[1]; second.connecting = false; second.emit('connect');
+    await explicit.destroy();
+    assert.deepStrictEqual(second.writes, [{ command: 'stop' }], 'explicit destroy still disconnects the receiver');
+    assert.strictEqual(second.ends, 1);
+    assert.strictEqual(intervals.size, 0); assert.strictEqual(retries.size, 0);
+    console.log('Backend client: explicit audio/video profiles, capability-gated video end and independent frontend disconnect passed');
+})().catch(error => { console.error(error); process.exitCode = 1; });

@@ -1,6 +1,7 @@
 'use strict';
 // Root-only, bounded firewall setup. Change only our tagged rules, only local
-// WLAN ranges and the receiver's fixed TCP/UDP ports; no table flush/policies.
+// WLAN ranges and fixed receiver ports plus app-owned local DACP TCP egress;
+// no table flush/policies or forwarded traffic.
 const cp = require('child_process'), os = require('os'), fs = require('fs'), path = require('path');
 const tag = 'mgu-airplay';
 // wlan_bridge is the BMW access point. wlan0 and wlan1 are the two supported
@@ -64,6 +65,16 @@ function desiredRules(chain, uid, interfaces) {
         const rule = output ? 'oifname "' + n.name + '" ' + n.family + ' daddr ' + n.prefix + ' meta skuid ' + uid + ' ' + protocol + ' sport 7100-7102' :
             'iifname "' + n.name + '" ' + n.family + ' saddr ' + n.prefix + ' ' + protocol + ' dport 7100-7102';
         result.push(rule + ' counter accept comment "' + tag + '"');
+    }
+    if (output) for (const n of networks(interfaces)) {
+        if (chain[0] !== 'inet' && chain[0] !== n.family) continue;
+        if (n.family === 'ip6' && n.prefix !== 'fe80::/10' && n.prefix !== 'fc00::/7') continue;
+        // DACP publishes a nonprivileged TCP port through DNS-SD. Its exact
+        // port can change per phone/session. The client pins requests to the
+        // authenticated RAOP peer; this exception grants only this app UID
+        // outbound access on local WLANs, never new inbound connections.
+        result.push('oifname "' + n.name + '" ' + n.family + ' daddr ' + n.prefix +
+            ' meta skuid ' + uid + ' tcp dport 1024-65535 counter accept comment "' + tag + '"');
     }
     return result;
 }

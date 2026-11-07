@@ -5,16 +5,16 @@
 Ein experimenteller, nativer AirPlay-Empfänger für BMW MGU / iDrive 7 von
 **[Leon Pllana IT-Solutions](https://pllana.io)**.
 
-**Quellstand:** App und native Laufzeit **0.4.3**.
-Die Änderungen in 0.4.3 sind lokal geprüft; die Fahrzeugabnahme steht aus.
+**Quellstand:** App und native Laufzeit **0.4.4**.
+Die Änderungen in 0.4.4 sind lokal geprüft; die Fahrzeugabnahme steht aus.
 Keine allgemeine Hardwarefreigabe und kein offizielles BMW- oder Apple-Produkt.
 
 **Der ausführliche Entwicklungsstand steht in [docs/STATUS.md](docs/STATUS.md):**
 Fahrzeugbestätigungen, lokale Testergebnisse, noch offene Fehler,
 zurückgenommene CarPlay-Versuche und nächste Arbeitsschritte.
 
-**MGU Store:** GitHub-Quelle **pllanaio/bmw-airplay**, Kanal **branch:main**.
-Die neue [mgu-repo.json](mgu-repo.json) und der Frontend-Builder sind vorhanden.
+**MGU Store:** GitHub-Quelle **pllanaio/bmw-airplay**, Kanal **Releases**.
+Der Store-Katalog liefert App und Empfänger als getrennte Pakete.
 App und native Laufzeit müssen gemeinsam aktualisiert werden.
 [Einrichtung und Grenzen der Store-Anbindung](docs/STORE.md).
 
@@ -32,6 +32,24 @@ App und native Laufzeit müssen gemeinsam aktualisiert werden.
 - Eigene pllana.io-Oberfläche, 140×140-App-Symbol und deutsche Schriftzeichen.
 - Passwortbasierte Kopplung mit einem auf der MGU angezeigten sechsstelligen Code.
 
+## Drei Wiedergabearten ab 0.4.4
+
+- **Spiegelung → Video:** Video im Hintergrund weitergeben; bewusstes
+  Beenden führt zur vorhandenen Bildschirmspiegelung zurück.
+- **Direktes YouTube-AirPlay:** Video im Hintergrund weitergeben; nach
+  Beenden auf den nächsten Titel warten, ohne eine Spiegelung zu starten.
+- **Nur Audio:** AirPlay-Musik über BMW-Lautsprecher, auch mit geschlossener
+  Oberfläche. Cover, Titel, Interpret und Album sowie Play/Pause, vor/zurück,
+  Shuffle und Repeat, soweit der gekoppelte Sender die Funktionen bereitstellt.
+  Neue Schaltfläche „Nur Audio“, eigener Empfang ohne Videofläche.
+
+„Video beenden“ beendet nur den Medieninhalt; „Trennen“ beendet den Empfänger.
+Die Sendersteuerung bleibt wirksam. [Bedienung, Protokollgrenzen und Tests](docs/MEDIA_MODES.md).
+
+Videos füllen die **1920 × 504** große Fläche mit zentriertem Beschnitt und
+erhaltenem Seitenverhältnis; der Empfänger fügt keine Balken hinzu. Für die
+Bildschirmspiegelung bleibt der ganze iPhone-Bildschirm sichtbar.
+
 ## Verwendung
 
 1. **CarPlay manuell im iDrive trennen.** Die App steuert oder unterdrückt CarPlay nicht.
@@ -46,10 +64,10 @@ App und native Laufzeit müssen gemeinsam aktualisiert werden.
 3. Auf der MGU „BMW AirPlay by pllana.io“ öffnen und „Verbinden“ drücken.
 4. Am iPhone denselben Empfänger unter „Bildschirmsynchronisierung“ oder direkt
    im AirPlay-Menü von YouTube auswählen und gegebenenfalls den Code eingeben.
-5. Ein aus der Spiegelung gestartetes AirPlay-Video wird beim Wechsel in den
-   Videomodus automatisch unabhängig gesteuert. Das iPhone bleibt bedienbar;
-   „Zur Spiegelung“ führt zurück; nach Videoende kann YouTube den nächsten
-   Playlist-Titel übergeben. Dies setzt einen
+5. Ein aus der Spiegelung gestartetes AirPlay-Video läuft im eigenen Medienpfad.
+   Stoppen bleibt am iPhone und über „Video beenden“ möglich. Danach geht es
+   zur vorhandenen Spiegelung zurück. Ein direkt gestartetes Video kehrt zum
+   Warten auf den nächsten Titel zurück; YouTube kann auch Playlist-Titel übergeben. Dies setzt einen
    tatsächlichen AirPlay-Videostream und Internet für dessen Abruf voraus.
 6. „Trennen“ beendet den Empfang und gibt die eigene Audioverbindung frei.
 

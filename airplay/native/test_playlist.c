@@ -9,7 +9,7 @@ static const char *d = "dddddddd-1111-4222-8333-444444444444";
 static int plays, resets, stops;
 static bool detached, inherited;
 static void play(void *cls, const char *uri, float start) {
-    (void)uri; (void)start; plays++; inherited = raop_playlist_continue_detached(cls);
+    (void)uri; (void)start; plays++; inherited = raop_playlist_continue_detached(cls); detached = inherited;
 }
 static bool is_detached(void *cls) { (void)cls; return detached; }
 static void reset(void *cls, reset_type_t type) { (void)cls; assert(type == RESET_TYPE_HLS_EOS); resets++; detached = false; }
@@ -29,6 +29,7 @@ static int dispatch(raop_t *raop, const char *path, plist_t root) {
     if (!strcmp(path, "/play")) http_handler_play(&conn, request, response, &reply, &length);
     else if (!strcmp(path, "/action")) http_handler_action(&conn, request, response, &reply, &length);
     else if (!strcmp(path, "/playback-info")) http_handler_playback_info(&conn, request, response, &reply, &length);
+    else if (!strcmp(path, "/stop")) http_handler_stop(&conn, request, response, &reply, &length);
     else http_handler_set_property(&conn, request, response, &reply, &length);
     int status = http_response_get_status(response); free(reply); plist_mem_free(body);
     http_request_destroy(request); http_response_destroy(response); return status;
@@ -73,6 +74,11 @@ static bool ended_with_concurrent_play(void) {
 }
 static bool natural(void) { return true; }
 static void ready(void) { assert(!strcmp(concurrent_server->mgu_active_uuid, c)); }
+static void guarded_stop(void *cls) {
+    ended_with_concurrent_play();
+    raop_playlist_stop(cls);
+    assert(concurrent_server->current_video == -1 && !strcmp(concurrent_server->mgu_active_uuid, c));
+}
 int main(void) {
     raop_t server = {0}; server.current_video = -1; server.logger = logger_init();
     server.callbacks.cls = &server; server.callbacks.on_video_play = play; server.callbacks.video_reset = reset;
@@ -111,8 +117,43 @@ int main(void) {
     assert(!server.mgu_reverse_queue || !((struct mgu_reverse_queue *)server.mgu_reverse_queue)->count);
     assert(item(&server, b, "https://media.example/b.mp4", false) == 200);
     raop_handle_hls_stop(&server); assert(!server.mgu_terminal && server.current_video == -1);
-    assert(item(&server, c, "https://media.example/c.mp4", true) == 409);
+    assert(item(&server, c, "https://media.example/c.mp4", true) == 200 && !inherited);
+    /* Explicit /stop remains authoritative even for a mirror-origin item;
+       it does not emit natural-end events or leave auto-next enabled. */
+    assert(item(&server, a, "https://media.example/a.mp4", false) == 200);
+    detached = true;
+    assert(dispatch(&server, "/stop", NULL) == 200 && stops == 1);
+    assert(server.mgu_playlist_cancelled && !server.mgu_terminal && server.current_video == -1);
+    assert(item(&server, b, "https://media.example/b.mp4", true) == 200 && !inherited);
+    assert(dispatch(&server, "/stop", NULL) == 200 && stops == 2);
+    assert(item(&server, a, "https://media.example/a.mp4", false) == 200 && !inherited);
+    detached = false; raop_handle_eos(&server);
+    assert(item(&server, b, "https://media.example/b.mp4", true) == 200 && !inherited);
+    /* Origin follows the whole sender-owned playlist, not only one hop. */
+    detached = true; raop_handle_eos(&server);
+    assert(item(&server, c, "https://media.example/c.mp4", true) == 200 && inherited);
+    raop_handle_eos(&server);
+    assert(item(&server, d, "https://media.example/d.mp4", true) == 200 && inherited);
+    /* A head-unit signal owns the whole stop callback, not only its metadata
+       change. A concurrent accepted /play must execute after that stop. */
+    assert(item(&server, c, "https://media.example/c.mp4", false) == 200);
+    int previous_plays = plays; attempting = false;
+    raop_playlist_control(&server, guarded_stop, &server);
+    assert(pthread_join(successor, NULL) == 0);
+    assert(plays == previous_plays + 1 && server.current_video >= 0 && !strcmp(server.mgu_active_uuid, d));
+    /* A force-mirror hold survives the renderer's subsequent stop poll. */
+    raop_playlist_stop(&server); raop_playlist_hold(&server); raop_handle_hls_stop(&server);
+    assert(!server.mgu_accept_after_stop);
+    assert(item(&server, a, "https://media.example/a.mp4", true) == 409);
+    assert(item(&server, c, "https://media.example/c.mp4", false) == 200);
+    previous_plays = plays; attempting = false;
+    void *transition = raop_playlist_transition_begin(&server);
+    guarded_stop(&server);
+    assert(plays == previous_plays); /* The handoff remains owned after stop. */
+    raop_playlist_transition_end(transition);
+    assert(pthread_join(successor, NULL) == 0);
+    assert(plays == previous_plays + 1 && !strcmp(server.mgu_active_uuid, d));
     raop_destroy_airplay_video(&server, -1); mgu_reverse_destroy(&server); logger_destroy(server.logger);
-    puts("Playlist control: sequential items, UUID identity, duplicate/retry, detached continuation, serialized EOS, pause/none and stop passed");
+    puts("Playlist control: sequential items, UUID identity, duplicate/retry, multi-item origin inheritance, serialized EOS, pause/none and explicit mirror-origin stop passed");
     return 0;
 }
