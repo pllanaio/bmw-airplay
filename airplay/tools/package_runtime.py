@@ -48,7 +48,7 @@ def main():
     manifest, entries = collect()
     if manifest.get('version') != args.version:
         raise SystemExit('Runtime build version %s differs from %s' % (manifest.get('version'), args.version))
-    unit = (ROOT / 'airplay/runtime/' + UNIT).read_bytes()
+    unit = (ROOT / 'airplay/runtime' / UNIT).read_bytes()
     component = {
         'id': TOOL, 'kind': 'tool', 'version': args.version,
         'title': 'BMW AirPlay receiver runtime',
