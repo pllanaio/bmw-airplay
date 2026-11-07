@@ -33,6 +33,26 @@ static void direct(raop_t *raop,const char *data,int length,bool handled,int sta
     assert(bytes>0 && !strncmp(reply,expected,strlen(expected)));
     http_request_destroy(request);http_response_destroy(response);
 }
+static bool detached;
+static bool is_detached(void *cls) { (void)cls; return detached; }
+static float removed(void *cls) { (void)cls; return 12.0f; }
+static void remove_playlist(raop_t *raop) {
+    plist_t root = plist_new_dict(), params = plist_new_dict(), item = plist_new_dict();
+    plist_dict_set_item(root, "type", plist_new_string("playlistRemove"));
+    plist_dict_set_item(item, "uuid", plist_new_string("dddddddd-1111-4222-8333-444444444444"));
+    plist_dict_set_item(params, "item", item); plist_dict_set_item(root, "params", params);
+    char *body = NULL; uint32_t bytes = 0; plist_to_bin(root, &body, &bytes);
+    char header[512];
+    int size = snprintf(header, sizeof header, "POST /action HTTP/1.1\r\nHost: receiver\r\nX-Apple-Session-ID: 11111111-2222-4333-8444-555555555555\r\nContent-Type: application/x-apple-binary-plist\r\nContent-Length: %u\r\n\r\n", bytes);
+    http_request_t *request = http_request_init();
+    http_request_add_data(request, header, size); http_request_add_data(request, body, bytes);
+    assert(http_request_is_complete(request));
+    http_response_t *response = http_response_create(); http_response_init(response, "HTTP/1.1", 200, "OK");
+    raop_conn_t conn = {0}; conn.raop = raop; char *reply = NULL; int length = 0;
+    http_handler_action(&conn, request, response, &reply, &length);
+    free(reply); plist_mem_free(body); plist_free(root);
+    http_request_destroy(request); http_response_destroy(response);
+}
 int main(void) {
     raop_t raop = {0}; raop.logger = logger_init();
     raop.airplay_video[0] = airplay_video_init(&raop, 7101, NULL);
@@ -59,6 +79,19 @@ int main(void) {
     const char bad[]="Content-Location: file:///etc/passwd\r\n";
     direct(&raop,bad,strlen(bad),true,415);assert(stopped==1);
     request_playlist(&raop, raop.airplay_video[1], "#EXTM3U\nNEW\n");
+    /* playlistRemove from a backgrounded sender must preserve current_video:
+       the local player can still request its playlist and finish normally. */
+    set_playback_uuid(raop.airplay_video[0], "aaaaaaaa-1111-4222-8333-444444444444", 36);
+    set_playback_uuid(raop.airplay_video[1], "dddddddd-1111-4222-8333-444444444444", 36);
+    raop.current_video = 1;
+    set_apple_session_id(raop.airplay_video[1], "11111111-2222-4333-8444-555555555555", 36);
+    raop.callbacks.on_video_playlist_remove = removed;
+    raop.callbacks.is_hls_detached = is_detached;
+    detached = true; remove_playlist(&raop);
+    assert(raop.current_video == 1);
+    request_playlist(&raop, raop.airplay_video[1], "#EXTM3U\nNEW\n");
+    detached = false; remove_playlist(&raop);
+    assert(raop.current_video == -1);
     raop.current_video = -1;
     request_playlist(&raop, raop.airplay_video[0], "#EXTM3U\nOLD\n");
     raop_destroy_airplay_video(&raop, -1); logger_destroy(raop.logger);

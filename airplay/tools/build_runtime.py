@@ -8,6 +8,8 @@ import shutil
 import subprocess
 from patch_hls_lifecycle import patch as patch_hls_lifecycle
 from patch_detach import patch as patch_detach
+from patch_reverse import patch as patch_reverse
+from patch_playlist import patch as patch_playlist
 
 ROOT = Path(__file__).resolve().parents[2]
 WORK = ROOT / '.local/airplay'
@@ -75,7 +77,11 @@ def main():
         raise RuntimeError('Unexpected mirror codec callback')
     video_text = video_text.replace(anchor, anchor + '\n    g_print("MGU_MODE mirror\\n"); fflush(stdout);')
     ux_text, video_text = patch_hls_lifecycle(WORK / 'UxPlay', source, ux_text, video_text)
-    ux_text = patch_detach(ux_text)
+    ux_text = patch_detach(ux_text, source)
+    patch_reverse(source, WORK / 'UxPlay')
+    ux_text, video_text = patch_playlist(source, ux_text, video_text)
+    for name in ['mgu_reverse.h', 'mgu_playlist.h']:
+        shutil.copy2(ROOT / 'airplay/native' / name, source / 'lib' / name)
     shutil.copy2(ROOT / 'airplay/native/mgu_direct_play.h', source / 'lib/mgu_direct_play.h')
     ux_text += '\n#include "mgu_crash_trace.h"\n'
     shutil.copy2(ROOT / 'airplay/native/mgu_crash_trace.h', source / 'mgu_crash_trace.h')
@@ -165,19 +171,22 @@ def main():
         executable.chmod(0o755)
     (RUNTIME / 'lib/ld-linux-x86-64.so.2').chmod(0o755)
     record = {
-        'format': 'mgu-airplay-runtime-v1', 'version': '0.4.2', 'architecture': 'x86_64',
+        'format': 'mgu-airplay-runtime-v1', 'version': '0.4.3', 'architecture': 'x86_64',
         'uxplay': {'version': '1.73.7', 'revision': UX_REV},
         'mdns_client': {'version': '765.20.4', 'revision': MDNS_REV, 'daemon': 'existing MGU mdnsd'},
         'source_patch': {'file': 'lib/CMakeLists.txt', 'sha256': sha(cmake)},
         'connection_events_patch_sha256': sha(ux_source),
         'hls_renderer_patch_sha256': sha(video_source),
-        'features': ['detach'],
+        'features': ['detach', 'native-detach', 'playlist'],
         'hls_output_sha256': sha(ROOT / 'airplay/native/mgu_hls_output.h'),
         'crash_trace_sha256': sha(ROOT / 'airplay/native/mgu_crash_trace.h'),
         'direct_play_sha256': sha(ROOT / 'airplay/native/mgu_direct_play.h'),
+        'playlist_sha256': sha(ROOT / 'airplay/native/mgu_playlist.h'),
+        'reverse_sha256': sha(ROOT / 'airplay/native/mgu_reverse.h'),
         'hls_lifecycle_patches': {name: sha(source / name) for name in [
             'lib/raop.c', 'lib/raop.h', 'lib/raop_handlers.h', 'lib/http_handlers.h', 'lib/airplay_video.c',
-            'lib/raop_rtp_mirror.c', 'renderers/video_renderer.h', 'renderers/audio_renderer.c']},
+            'lib/raop_rtp_mirror.c', 'lib/httpd.c', 'lib/httpd.h', 'lib/http_response.c', 'lib/http_response.h',
+            'lib/fcup_request.h', 'renderers/video_renderer.h', 'renderers/audio_renderer.c']},
         'drm_supported': False, 'hardware_qualified': False,
         'host_dependencies': ['existing mdnsd', 'OEM libasound.so.2 and SmartX plugin'],
         'files': {p.relative_to(RUNTIME).as_posix(): {'sha256': sha(p), 'bytes': p.stat().st_size}

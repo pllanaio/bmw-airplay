@@ -1,10 +1,10 @@
 'use strict';
 const assert = require('assert'), vm = require('vm'), fs = require('fs'), EventEmitter = require('events');
-const sockets = [], writes = [], timers = [];
-let receiver, route, accept;
+const sockets = [], writes = [], timers = [], startupOrder = [];
+let receiver, route, accept, uplinkOnline = false;
 class Receiver extends EventEmitter {
-    constructor() { super(); receiver = this; this.state = {}; this.child = null; this.starts = 0; this.stops = 0; }
-    start(options) { this.child = {}; this.starts++; this.lastOptions = options; this.update({phase:'waiting', error:null}); return true; }
+    constructor(options) { super(); receiver = this; this.options = options; this.state = {}; this.child = null; this.starts = 0; this.stops = 0; }
+    start(options) { startupOrder.push('start'); this.child = {}; this.starts++; this.lastOptions = options; this.update({phase:'waiting', error:null}); return true; }
     crash() { this.child = null; this.update({phase:'error', error:'receiver_failed'}); this.emit('ended'); }
     stop() { this.child = null; this.stops++; return Promise.resolve(); }
     update(fields) { Object.assign(this.state, fields); this.emit('state', this.state); }
@@ -25,7 +25,7 @@ let socketInode = 1, exitCode = null;
 const fakeFs = {existsSync:()=>true,lstatSync:()=>({isSocket:()=>true,uid:12233}),unlinkSync:()=>{},writeFileSync:()=>{},chmodSync:()=>{},
     statSync:p=>({dev:1,ino:/control\.sock$/.test(p)?socketInode:7,mtime:new Date(0)})};
 const modules = {
-    './resolver':{refresh:()=>{}},fs:fakeFs,path:require('path'),'./receiver':{Receiver},
+    './resolver':{refresh:()=>startupOrder.push('dns'),hasUplink:()=>uplinkOnline},fs:fakeFs,path:require('path'),'./receiver':{Receiver},
     './audio_route':{AudioRoute,AUDIO_SINK:'fakesink'},'./kit/signals':{},
     net:{createServer:cb=>{accept=cb; return server;}}
 };
@@ -42,6 +42,10 @@ const turn = () => new Promise(resolve=>setImmediate(resolve));
     s.destroy=()=>{s.destroyed=true;s.emit('close');};
     accept(s);
     s.emit('data','{"command":"start"}\n'); await turn();
+    assert.strictEqual(receiver.options.hls(), false, 'offline backend selects mirroring');
+    assert.deepStrictEqual(startupOrder.slice(-2), ['dns', 'start'], 'refresh DNS before the new receiver uses a newly appeared uplink');
+    uplinkOnline = true;
+    assert.strictEqual(receiver.options.hls(), true, 'new sessions read the current uplink lease');
     assert(receiver.child,'busy BMW audio must not prevent receiver discovery');
     assert.strictEqual(receiver.state.phase,'waiting');
     assert.strictEqual(receiver.state.audio,false);
@@ -56,9 +60,16 @@ const turn = () => new Promise(resolve=>setImmediate(resolve));
     // Video started from mirroring is detached from the phone once it plays.
     receiver.detaches = 0; receiver.detach = () => { receiver.detaches++; return true; };
     receiver.update({ returnMode: 'waiting', mode: 'hls' }); receiver.emit('media', 'hls');
-    assert(!scheduled.some(t => t.ms === 1500), 'a direct AirPlay video needs no detaching');
+    assert.strictEqual(receiver.detaches, 0, 'a direct AirPlay video needs no detaching');
     receiver.update({ returnMode: 'mirror', mode: 'hls' }); receiver.emit('media', 'hls');
-    fire(1500); assert.strictEqual(receiver.detaches, 1, 'video from mirroring is detached');
+    assert.strictEqual(receiver.detaches, 1, 'video from mirroring is detached before an immediate app switch');
+    receiver.update({ detached: true }); receiver.emit('media', 'hls');
+    assert.strictEqual(receiver.detaches, 1, 'acknowledged native detachment needs no fallback signal');
+    receiver.features = { nativeDetach: true };
+    receiver.update({ detached: false, returnMode: 'mirror' }); receiver.emit('media', 'hls');
+    assert.strictEqual(receiver.detaches, 1, 'native detection is authoritative even if the UI still remembers a prior mirror');
+    receiver.update({ returnMode: 'waiting' }); receiver.emit('media', 'hls');
+    assert.strictEqual(receiver.detaches, 1, 'a later direct video retains phone controls');
     receiver.resumes = 0; receiver.resumeMirror = () => { receiver.resumes++; return true; };
     s.emit('data', '{"command":"resume-mirror"}\n'); await turn(); assert.strictEqual(receiver.resumes, 1);
     receiver.update({ returnMode: 'waiting', mode: 'waiting' });

@@ -77,15 +77,29 @@ function removeLegacy(uid, io) {
     return true;
 }
 
-let child = null, stopping = false, timer = null;
+function applyNetwork(uid, io) {
+    io = io || { cp };
+    const result = io.cp.spawnSync('/usr/bin/node', [path.join(BASE, 'network.js'), 'apply', String(uid)], {
+        encoding: 'utf8', timeout: 20000, maxBuffer: 262144,
+    });
+    return result.status === 0 ? null : String(result.stderr || result.error || 'failed').trim().split('\n').pop().slice(0, 200);
+}
+function monitorNetwork(uid, changed, io) {
+    io = io || { cp, setInterval, clearInterval };
+    // mgu-uplink rebuilds its firewall table after an uplink/UID change.
+    // Reconcile our exceptions then, including when the receiver started
+    // before the uplink. network.js does not rewrite unchanged rules.
+    const handle = io.setInterval(() => changed(applyNetwork(uid, io)), 5000);
+    return () => io.clearInterval(handle);
+}
+let child = null, stopping = false, timer = null, cancelNetwork = null, runningTimer = null;
 function start() {
     if (stopping) return;
     let uid = null;
     try { uid = appUid(); } catch (e) { status('app_identity_invalid', { error: e.message }); timer = setTimeout(start, 10000); return; }
     const script = uid && '/var/opt/public/oap/oap_' + uid + '/source/javascript/backend.js';
     if (!uid || !fs.existsSync(script)) { status('waiting_for_app', { uid }); timer = setTimeout(start, 5000); return; }
-    const net = cp.spawnSync('/usr/bin/node', [path.join(BASE, 'network.js'), 'apply', String(uid)], { encoding: 'utf8', timeout: 20000 });
-    const netError = net.status === 0 ? null : String(net.stderr || net.error || 'failed').trim().split('\n').pop().slice(0, 200);
+    let netError = applyNetwork(uid);
     if (netError) console.error('AirPlay network rules not applied: ' + netError);
     const home = '/var/opt/public/oap/oap_' + uid + '/data';
     status('starting', { uid, network: netError ? 'failed: ' + netError : 'ok' });
@@ -94,9 +108,16 @@ function start() {
         env: Object.assign({}, process.env, { HOME: home, MGU_AIRPLAY_RUNTIME: path.join(BASE, 'runtime') }),
     });
     const started = Date.now();
-    const running = setTimeout(() => {
+    runningTimer = setTimeout(() => {
+        runningTimer = null;
         if (!child) return;
         status('running', { uid, network: netError ? 'failed' : 'ok' });
+        cancelNetwork = monitorNetwork(uid, error => {
+            if (stopping || error === netError) return;
+            netError = error;
+            if (error) console.error('AirPlay network rules not applied: ' + error);
+            status('running', { uid, network: error ? 'failed: ' + error : 'ok' });
+        });
         // Once the receiver is up, remove the old runtime (after the Store's
         // own install run has ended; the deploy tool waits for its lock).
         timer = setTimeout(() => { if (child && !stopping) removeLegacy(uid); }, 20000);
@@ -104,16 +125,19 @@ function start() {
     child.on('error', e => status('backend_launch_failed', { uid, error: e.message }));
     // systemd restarts the unit (and re-runs the UID lookup) when the backend ends.
     child.on('exit', (code, signal) => {
-        clearTimeout(running);
+        clearTimeout(runningTimer); clearTimeout(timer);
+        if (cancelNetwork) { cancelNetwork(); cancelNetwork = null; }
         if (!stopping) status('backend_exited', { uid, code, signal, afterSeconds: Math.round((Date.now() - started) / 1000) });
         process.exit(stopping ? 0 : (signal ? 1 : code || 1));
     });
 }
 for (const sig of ['SIGTERM', 'SIGINT']) process.on(sig, () => {
-    stopping = true; clearTimeout(timer); status('stopped');
+    stopping = true; clearTimeout(timer); clearTimeout(runningTimer);
+    if (cancelNetwork) { cancelNetwork(); cancelNetwork = null; }
+    status('stopped');
     if (child) child.kill(sig); else process.exit(0);
 });
-module.exports = { parseUids, removeLegacy };
+module.exports = { parseUids, removeLegacy, applyNetwork, monitorNetwork };
 if (require.main === module) {
     if (process.getuid() !== 0) throw Error('root_supervisor_required');
     start();

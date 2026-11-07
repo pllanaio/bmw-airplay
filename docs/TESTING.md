@@ -27,6 +27,8 @@ Alternativ die folgenden Dateien einzeln mit Node ausführen:
 | airplay/test_receiver.js | Node-8-Startverhalten, stabiler Gerätename/-kennung, Passwortmodus, Modus-/Rückkehrzustände, begrenzte Absturzdiagnose |
 | airplay/test_frontend_lifecycle.js | UI-/Fokuswechsel erhalten die Sitzung, Stop/Schließen beenden sie |
 | airplay/test_video_bridge.js | Neuer Frame-Transport, geändertes Layout und Renderer-Wiederverbindung |
+| airplay/test_network.js | BMW-WLAN ohne Startadresse, wlan1, eigene Regeln nach Uplink-Neuaufbau, keine Änderung fremder Regeln und Monitor-Lebenszyklus |
+| airplay/test_resolver.js | Kein Uplink, Hotspot-Verlust, USB-/WLAN-DNS-Wechsel und Erhalt der privaten Resolver-Inode |
 | airplay/test_logo_bridge.js | Native Logo-Nachrichten, Alpha-Behandlung und Wiederverwendung |
 
 Das sind Verhaltensprüfungen mit gezielten Ersatzschnittstellen. Sie
@@ -65,7 +67,17 @@ Die Prüfungen umfassen:
 - getrennte alte/neue lokale Playlist-Routen;
 - direkte textbasierte und binäre Play-Requests;
 - Erhalt des YouTube-FCUP-Pfades;
-- Ablehnen nicht unterstützter direkter Medien-URLs.
+- Ablehnen nicht unterstützter direkter Medien-URLs;
+- native Erkennung Spiegelung → HLS, Ignorieren von Telefon-Pause/Stop/HLS-TEARDOWN,
+  Erhalt der Playlist bei playlistRemove und Rückkehr über Ende/„Zur Spiegelung“;
+- drei aufeinanderfolgende Titel über den tatsächlichen AirPlay-HTTP-Server,
+  `playlistInsert` und erhaltene Steuer-/Rückkanalverbindungen;
+- fragmentierte ACK-Header und ACK-Body ohne vorzeitiges Senden des nächsten
+  Ereignisses; weiter bedienbare Steuerverbindung während unvollständiger ACKs;
+- Endposition, Reihenfolge der Ende-Ereignisse, Wiederholung desselben Titels,
+  Abbruch, Wiederverbindung und Ablauf einer ausstehenden Bestätigung;
+- nicht blockierender 503-/Retry-Pfad bei gleichzeitigem Renderer-Reset,
+  weiter bedienbare lokale HLS-GETs und Wiederholung auf derselben Verbindung.
 
 test_video_sink.c deckt I420-Transport und Layout-/Stride-Fragen ab.
 Die zugehörigen Format-/Orientierungsprüfungen verwenden synthetische Frames.
@@ -114,6 +126,9 @@ SDK-Donor und das festgelegte öffentliche Kit.
 | Viele Stunden / viele Video-Wechsel / Kaltstart | Offen |
 | Erholung von echten Downloadfehlern ohne nativen Absturz | Bekannter offener Fehler |
 | Neue Store-Installation auf realer MGU | Offen |
+| 0.4.3: YouTube-Playlist mit mehreren Titeln automatisch fortsetzen | Drei Titel mit synthetischem Sender lokal geprüft, Fahrzeugabnahme offen |
+| 0.4.3: BMW-WLAN ohne iPhone-Hotspot, YouTube mit iPhone-Mobilfunk als Spiegelung | Lokale Startoptionen geprüft, Fahrzeugtest offen |
+| 0.4.3: Spiegelung → HLS, dann App-Wechsel/Sperren, mit eigenem MGU-Uplink | Native Regressionstests vorhanden, Fahrzeugtest offen |
 
 ## Testregeln für weitere Entwicklung
 

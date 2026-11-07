@@ -5,8 +5,8 @@
 Ein experimenteller, nativer AirPlay-Empfänger für BMW MGU / iDrive 7 von
 **[Leon Pllana IT-Solutions](https://pllana.io)**.
 
-**Aktueller Stand:** App **0.2.6**, native Laufzeit **0.2.4**.
-Dies ist der Quellcode des auf der Entwicklungs-Headunit eingesetzten Standes.
+**Quellstand:** App und native Laufzeit **0.4.3**.
+Die Änderungen in 0.4.3 sind lokal geprüft; die Fahrzeugabnahme steht aus.
 Keine allgemeine Hardwarefreigabe und kein offizielles BMW- oder Apple-Produkt.
 
 **Der ausführliche Entwicklungsstand steht in [docs/STATUS.md](docs/STATUS.md):**
@@ -15,7 +15,7 @@ zurückgenommene CarPlay-Versuche und nächste Arbeitsschritte.
 
 **MGU Store:** GitHub-Quelle **pllanaio/bmw-airplay**, Kanal **branch:main**.
 Die neue [mgu-repo.json](mgu-repo.json) und der Frontend-Builder sind vorhanden.
-Die native Laufzeit 0.2.4 bleibt separat erforderlich.
+App und native Laufzeit müssen gemeinsam aktualisiert werden.
 [Einrichtung und Grenzen der Store-Anbindung](docs/STORE.md).
 
 ## Funktionen und bestätigter Stand
@@ -26,19 +26,32 @@ Die native Laufzeit 0.2.4 bleibt separat erforderlich.
   direkte YouTube-Wiedergabe bei im Hintergrund laufender iPhone-App.
 - Native Vollbildausgabe mit erhaltenem Seitenverhältnis und Unterstützung
   wechselnder Bildabmessungen; Fotos und Videos nutzen dieselbe Ausgabe.
+- Übergabepfad für YouTube-Playlists: Ende-Meldung an das iPhone und Erhalt
+  der Sitzung für den nächsten Titel; Fahrzeugabnahme steht aus.
+  [Verwendung und Testmatrix](docs/PLAYLISTS.md).
 - Eigene pllana.io-Oberfläche, 140×140-App-Symbol und deutsche Schriftzeichen.
 - Passwortbasierte Kopplung mit einem auf der MGU angezeigten sechsstelligen Code.
 
 ## Verwendung
 
 1. **CarPlay manuell im iDrive trennen.** Die App steuert oder unterdrückt CarPlay nicht.
-2. iPhone und MGU benötigen eine gemeinsame Netzwerkverbindung. Im getesteten
-   Aufbau stellt das iPhone den persönlichen Hotspot bereit; die MGU verbindet
-   sich über den MGU-WiFi-Uplink damit.
+2. Das iPhone mit dem **BMW-WLAN** verbinden. Für lokale Bildschirmspiegelung
+   ist weder der persönliche iPhone-Hotspot noch ein Internet-Uplink nötig.
+   Alternativ können beide Geräte ein gemeinsames WLAN nutzen.
+   Direkte YouTube-/HLS-Wiedergabe benötigt zusätzlich Internet an der MGU
+   über den MGU-Uplink. Die Mobilfunkverbindung des iPhones allein genügt
+   dafür nicht. Ohne Uplink bleibt YouTube deshalb in der Bildschirmspiegelung;
+   der direkte YouTube-AirPlay-Knopf liefert in diesem Modus nur Audio.
+   [Netzwerkaufbau und Grenzen](docs/NETWORK.md).
 3. Auf der MGU „BMW AirPlay by pllana.io“ öffnen und „Verbinden“ drücken.
 4. Am iPhone denselben Empfänger unter „Bildschirmsynchronisierung“ oder direkt
    im AirPlay-Menü von YouTube auswählen und gegebenenfalls den Code eingeben.
-5. „Trennen“ beendet den Empfang und gibt die eigene Audioverbindung frei.
+5. Ein aus der Spiegelung gestartetes AirPlay-Video wird beim Wechsel in den
+   Videomodus automatisch unabhängig gesteuert. Das iPhone bleibt bedienbar;
+   „Zur Spiegelung“ führt zurück; nach Videoende kann YouTube den nächsten
+   Playlist-Titel übergeben. Dies setzt einen
+   tatsächlichen AirPlay-Videostream und Internet für dessen Abruf voraus.
+6. „Trennen“ beendet den Empfang und gibt die eigene Audioverbindung frei.
 
 ## Bekannte Grenzen
 

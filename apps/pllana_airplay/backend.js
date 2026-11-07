@@ -16,7 +16,7 @@ if (fs.existsSync(socketPath)) {
     if (!s.isSocket() || s.uid !== process.getuid()) throw Error('invalid_control_socket');
     fs.unlinkSync(socketPath);
 }
-const receiver = new Receiver({ dataDir: data, runtime: process.env.MGU_AIRPLAY_RUNTIME || (fs.existsSync('/var/opt/pllana-airplay-receiver/current/runtime') ? '/var/opt/pllana-airplay-receiver/current/runtime' : '/var/opt/mgu-airplay/current/runtime'), audioSink: AUDIO_SINK, authentication: 'password' });
+const receiver = new Receiver({ dataDir: data, runtime: process.env.MGU_AIRPLAY_RUNTIME || (fs.existsSync('/var/opt/pllana-airplay-receiver/current/runtime') ? '/var/opt/pllana-airplay-receiver/current/runtime' : '/var/opt/mgu-airplay/current/runtime'), audioSink: AUDIO_SINK, authentication: 'password', hls: () => resolver.hasUplink() });
 const diagnostics = [];
 receiver.on('diagnostic', code => {
     diagnostics.push({ time: new Date().toISOString(), code });
@@ -41,14 +41,12 @@ async function ensureAudio() {
     catch (e) { receiver.update({ audio: false, audioError: 'audio_unavailable' }); }
 }
 receiver.on('media', () => enqueue(ensureAudio));
-// A video that starts while the screen is mirrored is detached from the
-// phone once it plays, so the iPhone can be used meanwhile (like a video sent
-// with AirPlay directly from the app).
-let detachTimer = null;
+// New runtimes detach a video at the native mirror -> HLS transition, before
+// the iPhone can cancel it by backgrounding YouTube. Signal immediately as a
+// fallback for the 0.4.2 runtime; it explicitly advertises SIGUSR1 support.
 receiver.on('media', mode => {
-    if (mode !== 'hls' || receiver.state.returnMode !== 'mirror' || receiver.state.detached) return;
-    clearTimeout(detachTimer);
-    detachTimer = setTimeout(() => { detachTimer = null; receiver.detach(); }, 1500);
+    if (mode === 'hls' && !(receiver.features && receiver.features.nativeDetach) &&
+        receiver.state.returnMode === 'mirror' && !receiver.state.detached) receiver.detach();
 });
 function send(state) {
     if (client && !client.destroyed) {
@@ -66,6 +64,7 @@ async function stop() {
 }
 function startReceiver(keepPassword) {
     clearTimeout(restartTimer); restartTimer = null;
+    resolver.refresh();
     if (!receiver.start(keepPassword ? { keepPassword: true } : undefined)) return false;
     clearTimeout(stableTimer);
     stableTimer = setTimeout(() => { stableTimer = null; if (receiver.child) failures = 0; }, STABLE_MS);

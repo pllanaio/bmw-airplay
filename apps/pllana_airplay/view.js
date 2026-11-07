@@ -31,7 +31,7 @@ function drawHome(c, state, notice, logo) {
     text(c, 'BMW AirPlay by pllana.io', 119, 58, 24, COLORS.blue, { spacing: 1 });
     const waiting = state.phase === 'waiting', loading = state.phase === 'loading';
     const busy = state.phase === 'starting' || state.phase === 'stopping' || state.phase === 'recovering' || loading;
-    const status = state.detached ? 'Video läuft unabhängig' : loading ? 'Video wird geladen' : waiting ? 'Empfang bereit' : state.phase === 'error' ? 'Verbindung prüfen' : busy ? 'Einen Moment …' : 'Nicht verbunden';
+    const status = state.playlistPending ? 'Wartet auf YouTube' : state.detached ? 'Video läuft unabhängig' : loading ? 'Video wird geladen' : waiting ? 'Empfang bereit' : state.phase === 'error' ? 'Verbindung prüfen' : busy ? 'Einen Moment …' : 'Nicht verbunden';
     c.roundRect(1274, 28, 278, 44, 22, COLORS.card);
     c.circle(1298, 50, 5, waiting ? COLORS.mint : state.phase === 'error' ? '#ffb178' : COLORS.muted);
     text(c, status, 1316, 58, 22, waiting ? COLORS.mint : COLORS.muted);
@@ -40,7 +40,7 @@ function drawHome(c, state, notice, logo) {
     text(c, 'Dein BMW.', 48, 226, 62, COLORS.ink);
     text(c, 'Bild und Ton. Drahtlos auf deinem Display.', 51, 280, 28, COLORS.muted);
     modeCard(c, 48, 'Bildschirm spiegeln', 'Im iPhone-Kontrollzentrum starten', 'phone');
-    modeCard(c, 540, 'YouTube übertragen', 'AirPlay direkt in YouTube wählen', 'youtube');
+    modeCard(c, 540, 'YouTube übertragen', state.directVideo === false ? 'Über Bildschirmsynchronisierung' : 'AirPlay direkt in YouTube wählen', 'youtube');
 
     c.card(1054, 100, 498, 341, 26, [[0, '#1b2e43'], [1, '#101b29']]);
     c.strokeRoundRect(1054, 100, 498, 341, 26, 1, '#30475e');
@@ -54,8 +54,8 @@ function drawHome(c, state, notice, logo) {
             c.roundRect(left + i * (cell + gap), 222, cell, 84, 12, '#080f19');
             text(c, code[i], left + i * (cell + gap) + cell / 2, 283, 50, '#ffffff', { align: 'center', literal: true });
         }
-        text(c, 'iPhone und BMW im selben WLAN.', 1084, 356, 23, COLORS.muted);
-        text(c, 'Lautstärke wie gewohnt am iDrive.', 1084, 395, 23, COLORS.muted);
+        text(c, 'BMW-WLAN oder gemeinsames WLAN.', 1084, 356, 23, COLORS.muted);
+        text(c, state.directVideo === false ? 'Ohne Uplink: Video bleibt gespiegelt.' : 'Lautstärke wie gewohnt am iDrive.', 1084, 395, 23, COLORS.muted);
     } else {
         airplay(c, 1258, 201, 90, COLORS.blue);
         text(c, busy ? 'Verbindung wird vorbereitet.' : 'Unten „Verbinden“ drücken.', 1303, 337, 25, COLORS.ink, { align: 'center' });

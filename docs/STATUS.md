@@ -8,14 +8,51 @@ einem separat installierten UxPlay-Empfänger und BMW-Audiorouting.
 Die bisherige Erprobung ist keine Freigabe für alle MGU-Hardwarestände,
 Fahrzeugausstattungen, iPhone-Apps oder iOS-Versionen.
 
-Der aktuelle veröffentlichte App-Quellstand ist **0.2.6**. Die auf dem
-Entwicklungsfahrzeug eingesetzte native Laufzeit ist **0.2.4**.
-Die beiden Nummern sind absichtlich unterschiedlich: 0.2.5 und 0.2.6 änderten
-die App und ihre CarPlay-Steuerung, nicht die native Laufzeit.
+Der vorbereitete Quellstand für App und Laufzeit ist **0.4.3**. Die neuen
+Änderungen sind lokal geprüft, noch nicht am Fahrzeug abgenommen. Die
+Fahrzeugbestätigungen weiter unten beziehen sich auf die dort genannten
+älteren Versionen.
 
 Der historische Git-Tag v0.2.6 bezeichnet den ersten veröffentlichten
 Quellcode-Snapshot. Die nachträgliche Store-Anbindung und diese ausführliche
 Dokumentation stehen auf main. Der Tag wird dafür nicht nachträglich verschoben.
+
+## Änderungen in 0.4.3 – BMW-WLAN und Video aus der Spiegelung
+
+- Persönlicher iPhone-Hotspot ist für lokale Spiegelung nicht nötig:
+  iPhone mit dem vorhandenen BMW-WLAN verbinden. Ohne Uplink-Lease wird
+  HLS beim Verbindungsstart nicht beworben; YouTube bleibt gespiegelt und
+  kann das Internet des iPhones nutzen. Der direkte YouTube-AirPlay-Knopf
+  liefert ohne HLS nur Audio. Nach Zuschalten eines Uplinks neu verbinden.
+- Für direkte/abgelöste HLS-Videos benötigt die MGU weiterhin eigenes
+  Internet über MGU-Uplink. iPhone-Mobilfunk wird nicht automatisch über
+  das BMW-WLAN geteilt. [Aufbau und Grenzen](NETWORK.md).
+- Eigene Firewallregeln unterstützen wlan_bridge/wlan0/wlan1. Der
+  Root-Supervisor repariert sie nach Uplink-Tabellenwechseln, ohne
+  unveränderte Regeln neu zu schreiben. DNS folgt auch einem USB-Uplink;
+  beim Verlust der Lease bleiben keine alten Hotspot-DNS-Server zurück.
+- Der native Empfänger erkennt den Wechsel von tatsächlichen Spiegelungs-
+  paketen zu HLS direkt beim Videoaufruf. Kein 1,5-s-Timer, der während
+  des Ladens feuert oder auf den nächsten Inhalt übergreift.
+- Bei einem abgelösten Video werden Telefon-Pause, Stop, HLS-TEARDOWN
+  und Playlist-Entfernen abgefangen; die lokalen Playlist-Routen und
+  das Bild bleiben auch beim Schließen der Telefon-Steuersockets bestehen.
+  „Zur Spiegelung“ und natürliches Videoende beenden die Ablösung.
+- Normale direkte AirPlay-Videos behalten ihre Steuerung über das iPhone.
+  Reine Bildschirmspiegelung lässt sich nicht in ein unabhängiges Video
+  verwandeln, wenn die iPhone-App keinen AirPlay-Videostream sendet.
+
+- YouTube-Titelübergaben über `playlistInsert` und der Rückkanal-Abschluss
+  unterstützen sendergesteuertes Fortsetzen einer Playlist. Die Verbindung
+  wird am natürlichen Videoende erhalten; Pause, Fehler und ausdrückliches
+  Beenden lösen keinen normalen Ende-/Weiter-Handshake aus.
+  [Protokollpfad und Fahrzeugabnahme](PLAYLISTS.md).
+
+Beide Pakete auf 0.4.3 aktualisieren. Die neuen lokalen Regressionstests
+prüfen Startoptionen, Offline-/Online-Leasewechsel, Firewall-Wiederherstellung,
+Spiegelungsursprung und die nativen Stop-/Playlist-/Rückkehrpfade. Sie ersetzen
+keinen iPhone-/MGU-Test; insbesondere das Verhalten bei realem App-Wechsel
+und beim Sperren des iPhones bleibt am Fahrzeug zu bestätigen.
 
 ## Änderungen in 0.4.2 – Video aus der Spiegelung vom iPhone lösen
 

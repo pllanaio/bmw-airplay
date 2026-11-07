@@ -7,7 +7,7 @@ iPhone
   ├─ Bildschirmspiegelung: AirPlay/RTP, Video + Audio
   └─ direkte Videowiedergabe: AirPlay-Steuerung / HLS
                      │
-           gemeinsames WLAN / Hotspot
+           BMW-WLAN / gemeinsames WLAN
                      │
           UxPlay + GStreamer, ohne Root
            ├─ I420-Frames → Shared Memory → MGU-Renderer → iDrive-Display
@@ -87,6 +87,7 @@ Der Zustand enthält getrennte Informationen:
 | phase | stopped, starting, waiting, loading, mirroring, stopping oder error |
 | mode | mirror, hls, waiting oder kein Modus |
 | returnMode | Rückkehr zur Spiegelung oder zum Warten nach einem Video |
+| playlistPending | Natürlicher Titelabschluss gemeldet; die Sitzung erwartet einen möglichen Folgetitel |
 | frame/file | Aktuell freigegebener Frame und sein Transport |
 | audio/audioError | Eigene Audioverbindung und deren Verfügbarkeit |
 | error | Bekannter Empfangs-/Medienfehler |
@@ -138,7 +139,8 @@ an den Renderer übergeben.
 ## Direkte Video-/HLS-Wiedergabe
 
 Bei direkter Wiedergabe erhält der Empfänger die Mediensteuerung und
-holt die Videodaten selbst. Deshalb benötigt die MGU Internet und DNS;
+holt die Videodaten selbst. Das gilt auch für ein Video, das während der
+Bildschirmspiegelung in den HLS-Modus wechselt. Deshalb benötigt die MGU Internet und DNS;
 eine funktionierende lokale Spiegelung allein beweist diesen Zugang nicht.
 
 YouTube verwendet einen FCUP-Austausch für Playlists. UxPlay stellt
@@ -167,6 +169,25 @@ Die HLS-Ausgabe nutzt:
 
 Diese Ausgabegrenze beschränkt nicht automatisch Auflösung oder Codec
 des tatsächlich heruntergeladenen Quellstreams.
+
+## YouTube-Warteschlangen
+
+Ein HLS-Medienmanifest beschreibt nur die Abschnitte eines Videos. Für mehrere
+YouTube-Titel liefert die iPhone-App neue Wiedergabeaufträge. Der Empfänger
+verarbeitet `playlistInsert` über den normalen `/play`-Pfad und hält am
+natürlichen Titelende die Steuer-/PTTH-Verbindungen offen. Abschlussposition
+und Ende-Ereignisse bleiben verfügbar, während der Sender den Folgetitel
+vorbereitet. Rückkanal-Anfragen werden begrenzt gepuffert und erst nach
+vollständiger Bestätigung des vorherigen Requests gesendet. Während des
+Renderer-Abbaus blockieren Steueranfragen den HTTP-Thread nicht: Sie erhalten
+kurzzeitig 503 mit Retry-After, während lokale HLS-GETs weiter bedient werden.
+Die Ende-Ereignisse werden erst nach abgeschlossenem Renderer-Reset gesendet.
+
+Ein Ladefehler, Stop oder „Zur Spiegelung“ darf nicht als natürliches
+Titelende gemeldet werden. „Zur Spiegelung“ bleibt auch in der Lücke zwischen
+zwei Titeln verfügbar und verwirft die ausstehende Fortsetzung. Die eigentliche
+Warteschlange und die Auswahl des nächsten Videos bleiben auf dem iPhone.
+[Bedienung und Fahrzeug-Testmatrix](PLAYLISTS.md).
 
 ## Frame-Transport
 
@@ -212,10 +233,14 @@ Das Backend wurde unter der App-UID mit CapEff=0 und NoNewPrivs=1 geprüft.
 
 Nur der Backend-Namespace erhält die Uplink-DNS-Server. Die globale
 BMW-resolv.conf bleibt unverändert. Die private Resolverdatei wird
-aus der Uplink-Lease aktualisiert; ihre Inode bleibt für den Bind-Mount erhalten.
+aus der Uplink-Lease aktualisiert und bei entfallener Lease auf den lokalen
+Offline-Resolver zurückgesetzt; ihre Inode bleibt für den Bind-Mount erhalten.
 
 Der Netzwerk-Helfer bearbeitet nur die eigenen markierten Regeln für
-die festen AirPlay-Ports und lokalen WLAN-Netze. Er ersetzt keine
+die festen AirPlay-Ports und lokalen WLAN-Netze auf wlan_bridge, wlan0 und
+wlan1. Der Root-Supervisor gleicht die Regeln regelmäßig ab, auch wenn der
+Uplink seine Tabelle beim Verbindungswechsel neu erstellt. Unveränderte
+Regeln werden nicht neu geschrieben. Er ersetzt keine
 globale Firewall-Policy und keine BMW-Default-Route.
 
 Für HTTPS wird der private CA-Store beim TLS-Backend registriert.

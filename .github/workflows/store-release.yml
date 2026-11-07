@@ -7,7 +7,7 @@ name: Store release (runtime + app)
 # workflow artifacts.
 on:
   push:
-    branches: [main, 'claude/**']
+    branches: [main, 'claude/**', 'codex/**']
   workflow_dispatch:
 
 permissions:
@@ -71,11 +71,12 @@ jobs:
           flags=$(pkg-config --cflags --libs gstreamer-video-1.0 gstreamer-app-1.0)
           gcc -O2 -Wall airplay/native/test_video_sink.c -o test_video_sink $flags
           GST_PLUGIN_PATH=.build/airplay/runtime/plugins ./test_video_sink
+          sh airplay/tools/test_lifecycle.sh
       - name: JavaScript and Store contract tests
         run: |
           node airplay/test_audio_route.js && node airplay/test_backend.js && node airplay/test_receiver.js
           node airplay/test_frontend_lifecycle.js && node airplay/test_video_bridge.js && node airplay/test_logo_bridge.js
-          node airplay/test_diagnose.js
+          node airplay/test_diagnose.js && node airplay/test_network.js && node airplay/test_resolver.js
           python3 test/test_store_contract.py
       - name: Package runtime tool and app
         run: |
