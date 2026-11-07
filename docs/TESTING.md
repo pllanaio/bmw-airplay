@@ -75,7 +75,9 @@ Die Prüfungen umfassen:
 - fragmentierte ACK-Header und ACK-Body ohne vorzeitiges Senden des nächsten
   Ereignisses; weiter bedienbare Steuerverbindung während unvollständiger ACKs;
 - Endposition, Reihenfolge der Ende-Ereignisse, Wiederholung desselben Titels,
-  Abbruch, Wiederverbindung und Ablauf einer ausstehenden Bestätigung.
+  Abbruch, Wiederverbindung und Ablauf einer ausstehenden Bestätigung;
+- nicht blockierender 503-/Retry-Pfad bei gleichzeitigem Renderer-Reset,
+  weiter bedienbare lokale HLS-GETs und Wiederholung auf derselben Verbindung.
 
 test_video_sink.c deckt I420-Transport und Layout-/Stride-Fragen ab.
 Die zugehörigen Format-/Orientierungsprüfungen verwenden synthetische Frames.

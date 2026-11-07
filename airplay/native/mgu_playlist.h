@@ -12,10 +12,14 @@ static void mgu_playlist_lock_init(void) {
     pthread_mutexattr_settype(&attr, PTHREAD_MUTEX_RECURSIVE);
     pthread_mutex_init(&mgu_playlist_mutex, &attr); pthread_mutexattr_destroy(&attr);
 }
-static void mgu_playlist_unlock(pthread_mutex_t **mutex) { pthread_mutex_unlock(*mutex); }
+static void mgu_playlist_unlock(pthread_mutex_t **mutex) { if (*mutex) pthread_mutex_unlock(*mutex); }
 static pthread_mutex_t *mgu_playlist_lock(void) {
     pthread_once(&mgu_playlist_once, mgu_playlist_lock_init);
     pthread_mutex_lock(&mgu_playlist_mutex); return &mgu_playlist_mutex;
+}
+static pthread_mutex_t *mgu_playlist_trylock(void) {
+    pthread_once(&mgu_playlist_once, mgu_playlist_lock_init);
+    return pthread_mutex_trylock(&mgu_playlist_mutex) == 0 ? &mgu_playlist_mutex : NULL;
 }
 #define MGU_PLAYLIST_GUARD pthread_mutex_t *mgu_playlist_guard __attribute__((cleanup(mgu_playlist_unlock))) = mgu_playlist_lock()
 static void mgu_http_handler_play_original(raop_conn_t *, http_request_t *, http_response_t *, char **, int *);
@@ -45,6 +49,7 @@ static plist_t mgu_request_plist(http_request_t *request) {
 }
 static void mgu_playlist_bad(http_response_t *response, int status) {
     http_response_init(response, "HTTP/1.1", status, status == 409 ? "Conflict" : "Bad Request");
+    http_response_add_header(response, "Content-Length", "0");
 }
 static bool mgu_media_location(const char *location) {
     if (!location || strlen(location) > 8192 || !*location) return false;
@@ -199,7 +204,7 @@ static void http_handler_play(raop_conn_t *conn, http_request_t *request, http_r
     if (strstr(location, "/master.m3u8") && !PLIST_IS_STRING(plist_dict_get_item(root, "clientProcName"))) {
         mgu_playlist_bad(response, 400); goto done;
     }
-    if (!raop->mgu_terminal && !raop->mgu_playlist_cancelled && seconds == raop->mgu_active_start &&
+    if (raop->current_video >= 0 && !raop->mgu_terminal && !raop->mgu_playlist_cancelled && seconds == raop->mgu_active_start &&
         !strcmp(uuid, raop->mgu_active_uuid) && !strcmp(session, raop->mgu_active_session) &&
         !strcmp(location, raop->mgu_active_source)) goto done; /* retransmission */
     if (!raop->mgu_inserting) raop->mgu_continue_detached = false;

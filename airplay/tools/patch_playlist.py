@@ -21,6 +21,25 @@ def patch(source, ux, video):
     double mgu_active_start;
     playback_info_t mgu_terminal_info, mgu_last_info;
     char mgu_active_session[37], mgu_active_uuid[37], mgu_active_source[8193];''')
+    raop = once(raop, 'conn_request(void *ptr, http_request_t *request, http_response_t **response) {', '''conn_request(void *ptr, http_request_t *request, http_response_t **response) {
+    pthread_mutex_t *mgu_control_guard __attribute__((cleanup(mgu_playlist_unlock))) = NULL;''')
+    anchor = '    hls_request = (host && !cseq && !client_session_id && !strcmp(method, "GET") && strcmp(url, "/server-info") && strcmp(url, "/playback-info"));'
+    raop = once(raop, anchor, anchor + '''
+    /* Never block the one HTTP thread behind EOS teardown: GStreamer may
+     * still need a local playlist GET to finish shutting its pipeline down.
+     * End events are sent after reset, so normal sender auto-next arrives
+     * once this short exclusion has already completed. */
+    if (!hls_request) {
+        mgu_control_guard = mgu_playlist_trylock();
+        if (!mgu_control_guard) {
+            *response = http_response_create();
+            http_response_init(*response, protocol, 503, "Service Unavailable");
+            http_response_add_header(*response, "Retry-After", "1");
+            http_response_add_header(*response, "Content-Length", "0");
+            goto finish;
+        }
+    }
+''')
     start = raop.index('void raop_handle_eos(raop_t *raop) {')
     end = raop.index('\nuint64_t get_local_time()', start)
     raop = raop[:start] + '''bool raop_playlist_waiting(raop_t *raop) { MGU_PLAYLIST_GUARD; return raop && raop->mgu_terminal; }
@@ -154,6 +173,14 @@ int http_response_get_status(http_response_t *response) {
     # Never assert on a partially initialized cached item after a failed request.
     http = once(http, 'if (raop->airplay_video[i] && !strcmp(uuid, get_playback_uuid(raop->airplay_video[i])))',
                 'if (raop->airplay_video[i] && get_playback_uuid(raop->airplay_video[i]) && !strcmp(uuid, get_playback_uuid(raop->airplay_video[i])))')
+    # A standard direct replay can retain the old item for outstanding local
+    # routes. Control commands for that UUID must select the active replay.
+    http = once(http, 'get_playlist_by_uuid(raop_t *raop, const char *uuid) {', '''get_playlist_by_uuid(raop_t *raop, const char *uuid) {
+    if (!uuid) return -1;
+    int current = raop->current_video;
+    if (current >= 0 && current < MAX_AIRPLAY_VIDEO && raop->airplay_video[current] &&
+        get_playback_uuid(raop->airplay_video[current]) &&
+        !strcmp(uuid, get_playback_uuid(raop->airplay_video[current]))) return current;''')
     http_path.write_text(http)
     # Complete sender-controlled continuation can inherit the detached mirror origin,
     # while a later unrelated /play never inherits it.

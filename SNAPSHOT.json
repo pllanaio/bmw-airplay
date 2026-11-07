@@ -33,11 +33,11 @@
     "airplay/runtime/launch.js": "9d4ac88565c152e905982f29023d58b988640a06ac947e02f90fb25c045367cb",
     "airplay/tools/patch_detach.py": "698898bc7a35ed787817c8ad8178c0ea98f91d810c69d5a7d56d731919327594",
     "airplay/native/test_detach.cpp": "655fd970bc8ab204eb3412f6c7a1f11dd9b401fb1093b53019717bd27460e82d",
-    "airplay/native/mgu_playlist.h": "85e558f8816c601b519f0c80e6dd3bf282d9e03571919f3e1f1aeb85ddf20cfd",
+    "airplay/native/mgu_playlist.h": "30d9d4e2d2b0c20b91a63ffa8434fe091460712209a328b258a2447a7348809b",
     "airplay/native/mgu_reverse.h": "e59cd90ec8e57d9731b25dda5debf5c8a30a75ee9d4f2a1904a69ee8201b6322",
-    "airplay/native/test_playlist.c": "93166af26dd50dac1c0c0cd727c2f0ed4120ddc9a2e1a64e3257fdfde6a2421b",
-    "airplay/native/test_playlist_events.c": "cc2d0832f1feed8fff61956a7056e10c836d62b5169c256d83c6080965fbae0c",
-    "airplay/tools/patch_playlist.py": "ed031ed9e896a04f19b4e28bea31ee306d6c67d557bbefeef19502b1130ab721",
+    "airplay/native/test_playlist.c": "f5db0894b09719b2fcf6ddb4f2b3da4915c739ad97b6fd3c716523615435170b",
+    "airplay/native/test_playlist_events.c": "72ccfdfbbbe5ff6b688da0e296340227c19abf9cb6c38cd5ab528ab1b29ee581",
+    "airplay/tools/patch_playlist.py": "03cea79c65d64a914aae8a4d5f33884bba6d06622fcef614a19fe3c6800c6899",
     "airplay/tools/patch_reverse.py": "ad0c549097ef5da03c9e4ea5d7b420cff192ae1d3ed5db23d7cc3ab942fa096d"
   },
   "export_tooling_changes": [

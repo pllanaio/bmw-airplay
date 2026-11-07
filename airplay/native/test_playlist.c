@@ -14,6 +14,7 @@ static void play(void *cls, const char *uri, float start) {
 static bool is_detached(void *cls) { (void)cls; return detached; }
 static void reset(void *cls, reset_type_t type) { (void)cls; assert(type == RESET_TYPE_HLS_EOS); resets++; detached = false; }
 static void stop(void *cls) { (void)cls; stops++; }
+static float removed(void *cls) { (void)cls; return 42.0f; }
 static void info(void *cls, playback_info_t *out) {
     (void)cls; memset(out, 0, sizeof *out); out->duration = 42.0; out->position = 41.0; out->rate = 1.0f;
 }
@@ -48,6 +49,12 @@ static void action(raop_t *raop, unsigned value) {
     plist_t root = plist_new_dict(); plist_dict_set_item(root, "value", plist_new_uint(value));
     assert(dispatch(raop, "/setProperty?actionAtItemEnd", root) == 200); plist_free(root);
 }
+static int remove_item(raop_t *raop, const char *uuid) {
+    plist_t root = plist_new_dict(), params = plist_new_dict(), play = plist_new_dict();
+    plist_dict_set_item(play, "uuid", plist_new_string(uuid)); plist_dict_set_item(params, "item", play);
+    plist_dict_set_item(root, "params", params); plist_dict_set_item(root, "type", plist_new_string("playlistRemove"));
+    int status = dispatch(raop, "/action", root); plist_free(root); return status;
+}
 static pthread_mutex_t test_mutex = PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t test_condition = PTHREAD_COND_INITIALIZER;
 static pthread_t successor;
@@ -71,6 +78,7 @@ int main(void) {
     server.callbacks.cls = &server; server.callbacks.on_video_play = play; server.callbacks.video_reset = reset;
     server.callbacks.is_hls_detached = is_detached; server.callbacks.on_video_stop = stop;
     server.callbacks.on_video_acquire_playback_info = info;
+    server.callbacks.on_video_playlist_remove = removed;
     assert(item(&server, a, "https://media.example/a.mp4", false) == 200); assert(plays == 1);
     assert(get_playlist_by_uuid(&server, a) == server.current_video);
     assert(item(&server, a, "https://media.example/a.mp4", false) == 200 && plays == 1);
@@ -92,6 +100,9 @@ int main(void) {
     raop_playlist_cancel(&server);
     assert(item(&server, c, "https://media.example/c.mp4", true) == 409);
     assert(item(&server, d, "https://media.example/d.mp4", false) == 200 && plays == 5);
+    assert(get_playlist_by_uuid(&server, d) == server.current_video);
+    assert(remove_item(&server, d) == 200 && server.current_video == -1);
+    assert(item(&server, d, "https://media.example/d.mp4", false) == 200 && plays == 6);
     /* Pause/none never produce the four-message advance handshake. */
     action(&server, 1); raop_handle_eos(&server);
     assert(server.mgu_terminal_info.rate == 0.0f && (!server.mgu_reverse_queue || !((struct mgu_reverse_queue *)server.mgu_reverse_queue)->count));

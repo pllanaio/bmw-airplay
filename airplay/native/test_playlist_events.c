@@ -6,6 +6,9 @@
 #include <sys/time.h>
 
 static int plays, resets;
+static void log_message(void *cls, int level, const char *message) {
+    (void)cls; (void)level; fprintf(stderr, "%s\n", message);
+}
 static void audio(void *cls, raop_ntp_t *ntp, audio_decode_struct *data) {(void)cls;(void)ntp;(void)data;}
 static void video(void *cls, raop_ntp_t *ntp, video_decode_struct *data) {(void)cls;(void)ntp;(void)data;}
 static void play(void *cls, const char *uri, float start) {(void)cls;(void)uri;(void)start;__sync_add_and_fetch(&plays, 1);}
@@ -117,10 +120,32 @@ static void queue_fixture(raop_t *server, const char *name) {
     plist_t fixture = plist_new_dict(); plist_dict_set_item(fixture, "type", plist_new_string(name));
     assert(mgu_reverse_send_plist(server, "11111111-2222-4333-8444-555555555555", fixture) == 0); plist_free(fixture);
 }
+static void busy_control_keeps_hls_responsive(int control, unsigned short port) {
+    pthread_mutex_t *held = mgu_playlist_lock();
+    const char busy[] = "GET /playback-info HTTP/1.1\r\nHost: receiver\r\nX-Apple-Session-ID: 11111111-2222-4333-8444-555555555555\r\nContent-Length: 0\r\n\r\n";
+    send_all(control, busy, sizeof busy - 1);
+    struct pollfd ready = {control, POLLIN, 0}; assert(poll(&ready, 1, 1000) == 1);
+    char header[2048], *body = NULL; read_frame(control, header, sizeof header, &body);
+    assert(!strncmp(header, "HTTP/1.1 503", 12));
+    assert(strstr(header, "\r\nRetry-After: 1\r\n"));
+    assert(strstr(header, "\r\nContent-Length: 0\r\n")); free(body);
+    /* Renderer shutdown may await this GET while holding the playlist lock. */
+    int hls = connect_sender(port);
+    const char missing[] = "GET /missing.m3u8 HTTP/1.1\r\nHost: receiver\r\nContent-Length: 0\r\n\r\n";
+    send_all(hls, missing, sizeof missing - 1);
+    ready.fd = hls; ready.revents = 0; assert(poll(&ready, 1, 1000) == 1);
+    read_frame(hls, header, sizeof header, &body);
+    assert(!strncmp(header, "HTTP/1.1 404", 12)); free(body);
+    shutdown(hls, SHUT_RDWR); close(hls);
+    mgu_playlist_unlock(&held);
+    /* The busy response preserves the original control connection. */
+    request(control, "GET", "/playback-info", NULL, &body); free(body);
+}
 int main(void) {
     raop_callbacks_t callbacks = {0}; callbacks.audio_process = audio; callbacks.video_process = video;
     callbacks.on_video_play = play; callbacks.video_reset = reset; callbacks.on_video_acquire_playback_info = info;
     raop_t *server = raop_init(&callbacks); assert(server);
+    raop_set_log_callback(server, log_message, NULL);
     char temporary[] = "/tmp/mgu-playlist-events-XXXXXX"; assert(mkdtemp(temporary));
     char keyfile[256]; snprintf(keyfile, sizeof keyfile, "%s/key", temporary);
     assert(raop_init2(server, 0, "02:11:22:33:44:55", keyfile) == 0);
@@ -133,6 +158,7 @@ int main(void) {
     play_item(control, "aaaaaaaa-1111-4222-8333-444444444444", false); assert(plays == 1);
     assert(server->current_video >= 0);
     request(control, "GET", "/playback-info", NULL, &body); free(body);
+    busy_control_keeps_hls_responsive(control, port);
     raop_handle_eos(server);
     /* Calling EOS twice for the same item must not repeat the notification. */
     raop_handle_eos(server);
@@ -190,6 +216,6 @@ int main(void) {
     request(control, "GET", "/playback-info", NULL, &body); free(body);
     shutdown(control, SHUT_RDWR); close(control);
     raop_stop_httpd(server); raop_destroy(server); unlink(keyfile); assert(rmdir(temporary) == 0);
-    puts("Playlist sender: three items on retained session, split header/body ACK FIFO, terminal clock, replay, cancellation, reconnect and expiry passed");
+    puts("Playlist sender: three items on retained session, split header/body ACK FIFO, terminal clock, replay, cancellation, reconnect, expiry and busy-control HLS responsiveness passed");
     return 0;
 }

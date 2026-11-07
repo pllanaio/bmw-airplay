@@ -178,7 +178,10 @@ verarbeitet `playlistInsert` über den normalen `/play`-Pfad und hält am
 natürlichen Titelende die Steuer-/PTTH-Verbindungen offen. Abschlussposition
 und Ende-Ereignisse bleiben verfügbar, während der Sender den Folgetitel
 vorbereitet. Rückkanal-Anfragen werden begrenzt gepuffert und erst nach
-vollständiger Bestätigung des vorherigen Requests gesendet.
+vollständiger Bestätigung des vorherigen Requests gesendet. Während des
+Renderer-Abbaus blockieren Steueranfragen den HTTP-Thread nicht: Sie erhalten
+kurzzeitig 503 mit Retry-After, während lokale HLS-GETs weiter bedient werden.
+Die Ende-Ereignisse werden erst nach abgeschlossenem Renderer-Reset gesendet.
 
 Ein Ladefehler, Stop oder „Zur Spiegelung“ darf nicht als natürliches
 Titelende gemeldet werden. „Zur Spiegelung“ bleibt auch in der Lücke zwischen
