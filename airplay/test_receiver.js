@@ -52,6 +52,12 @@ const { Receiver } = require('../apps/pllana_airplay/receiver');
         child.stdout.emit('data', 'MGU_MODE waiting\n');
         assert.strictEqual(p.child, child, 'media mode switches preserve native receiver');
         assert.strictEqual(p.state.pin, password, 'media mode switches preserve password');
+        await p.stop();
+        assert(p.start({ keepPassword: true }));
+        assert.strictEqual(p.state.pin, password, 'automatic recovery keeps the password the iPhone knows');
+        assert.strictEqual(calls[calls.length - 1].args[calls[calls.length - 1].args.indexOf('-pw') + 1], password);
+        await p.stop();
+        assert(p.start()); assert.notStrictEqual(p.state.pin, password, 'a manual connect issues a new password');
         await p.destroy();
         console.log('Node-8 startup, PIN synchronization, stable identity and stop lifecycle passed');
     } finally {

@@ -1,0 +1,136 @@
+name: Store release (runtime + app)
+
+# Builds the AirPlay runtime tool and the SDK-free app package, checks them and
+# writes the Store catalog. On main, a version that has no release yet is
+# published as release v<version>; the `catalog` release is switched last.
+# On other branches the same build runs as a check and keeps the packages as
+# workflow artifacts.
+on:
+  push:
+    branches: [main, 'claude/**']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: store-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    container: debian:12
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - name: Install build dependencies
+        run: |
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            ca-certificates git python3 nodejs build-essential cmake ninja-build pkg-config \
+            libssl-dev libplist-dev libglib2.0-dev libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev \
+            gstreamer1.0-tools gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-plugins-bad \
+            gstreamer1.0-libav gstreamer1.0-alsa gstreamer1.0-x libsoup-3.0-0 glib-networking file
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Read versions
+        id: version
+        run: |
+          app=$(python3 -c "import json;print(json.load(open('apps/pllana_airplay/app.json'))['version'])")
+          pkg=$(python3 -c "import json;print(json.load(open('package.json'))['version'])")
+          test "$app" = "$pkg"
+          echo "version=$app" >> "$GITHUB_OUTPUT"
+      - name: Fetch pinned upstream sources
+        run: |
+          mkdir -p .local/airplay
+          git clone https://github.com/FDH2/UxPlay .local/airplay/UxPlay
+          git -C .local/airplay/UxPlay checkout --detach df67c212a433cf6dda3676dd40c097900d24e645
+          git clone https://github.com/apple-oss-distributions/mDNSResponder .local/airplay/mDNSResponder
+          git -C .local/airplay/mDNSResponder checkout --detach 67390998bac34f1e203b0ad7fea72f7e2063066e
+      - name: Build native runtime
+        run: python3 airplay/tools/build_runtime.py
+      - name: Check the private runtime starts
+        run: |
+          R=.build/airplay/runtime
+          "$R/lib/ld-linux-x86-64.so.2" --library-path "$R/lib" --list "$R/bin/uxplay" > /dev/null
+          "$R/lib/ld-linux-x86-64.so.2" --library-path "$R/lib" "$R/bin/uxplay" -h > uxplay-help.txt 2>&1 || true
+          grep -q -- '-hls' uxplay-help.txt
+          GST_PLUGIN_SYSTEM_PATH_1_0= GST_PLUGIN_PATH_1_0="$R/plugins" GST_REGISTRY="$PWD/registry.bin" \
+            "$R/lib/ld-linux-x86-64.so.2" --library-path "$R/lib" "$R/bin/gst-launch-1.0" -q \
+            fakesrc num-buffers=0 ! queue max-size-buffers=3 max-size-bytes=0 max-size-time=0 ! \
+            videoconvertscale add-borders=true n-threads=2 dither=none method=bilinear ! fakesink
+          # The HLS output filter (mgu_hls_output.h) must find these bundled elements.
+          GST_PLUGIN_SYSTEM_PATH_1_0= GST_PLUGIN_PATH_1_0="$R/plugins" GST_REGISTRY="$PWD/registry.bin" \
+            "$R/lib/ld-linux-x86-64.so.2" --library-path "$R/lib" "$R/bin/gst-launch-1.0" -q \
+            audiotestsrc num-buffers=10 ! audioconvert ! audioresample ! fakesink
+      - name: Native tests
+        run: |
+          flags=$(pkg-config --cflags --libs gstreamer-video-1.0 gstreamer-app-1.0)
+          gcc -O2 -Wall airplay/native/test_video_sink.c -o test_video_sink $flags
+          GST_PLUGIN_PATH=.build/airplay/runtime/plugins ./test_video_sink
+      - name: JavaScript and Store contract tests
+        run: |
+          node airplay/test_audio_route.js && node airplay/test_backend.js && node airplay/test_receiver.js
+          node airplay/test_frontend_lifecycle.js && node airplay/test_video_bridge.js && node airplay/test_logo_bridge.js
+          node -e "const l=require('./airplay/runtime/launch.js');if(l.parseUids('12201=store\n13007=pllana_airplay\n')!==13007)process.exit(1)"
+          python3 test/test_store_contract.py
+      - name: Package runtime tool and app
+        run: |
+          useradd -m builder
+          chown -R builder .
+          su builder -c "python3 airplay/tools/package_runtime.py --version ${{ steps.version.outputs.version }} --out dist"
+          su builder -c "mkdir -p dist/app && MGU_OUT=\$PWD/dist/app python3 tools/build_store.py --app pllana_airplay --version ${{ steps.version.outputs.version }} --source apps/pllana_airplay --release-package"
+          mv dist/app/*.tgz dist/
+          python3 tools/make_catalog.py --dist dist --app-version ${{ steps.version.outputs.version }} \
+            --runtime-version ${{ steps.version.outputs.version }} --tag v${{ steps.version.outputs.version }}
+          (cd dist && sha256sum *.tgz catalog.json > SHA256SUMS && cat SHA256SUMS)
+      - name: Check package contents
+        run: |
+          tar -tzf dist/mgu-airplay@*.tgz | grep -qx 'files/launch.js'
+          tar -tzf dist/mgu-airplay@*.tgz | grep -qx 'units/mgu-airplay.service'
+          tar -tzf dist/mgu-airplay@*.tgz | grep -qx 'files/runtime/bin/uxplay'
+          ! tar -tzf dist/pllana_airplay@*.tgz | grep -q '^node_modules/oap-sdk/'
+          tar -xzOf dist/pllana_airplay@*.tgz package.json | python3 -c "import json,sys;p=json.load(sys.stdin);assert p['mguInternet'] is True and p['mguHmi']==['ID7'],p"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: store-packages
+          path: |
+            dist/*.tgz
+            dist/catalog.json
+            dist/SHA256SUMS
+          if-no-files-found: error
+
+  publish:
+    needs: build
+    if: github.ref == 'refs/heads/main' && github.repository == 'pllanaio/bmw-airplay'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      VERSION: ${{ needs.build.outputs.version }}
+      REPO: ${{ github.repository }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: store-packages
+          path: dist
+      - name: Publish version release (immutable), then switch the catalog
+        run: |
+          set -eu
+          if gh release view "v$VERSION" --repo "$REPO" > /dev/null 2>&1; then
+            echo "v$VERSION is already published; release assets are never replaced."
+          else
+            gh release create "v$VERSION" --repo "$REPO" --target "$GITHUB_SHA" \
+              --title "BMW AirPlay by pllana.io $VERSION" \
+              --notes "Store packages: app pllana_airplay $VERSION and runtime mgu-airplay $VERSION. Add pllanaio/bmw-airplay in MGU Store and choose Releases." \
+              dist/pllana_airplay@$VERSION.tgz dist/mgu-airplay@$VERSION.tgz dist/SHA256SUMS
+            if ! gh release view catalog --repo "$REPO" > /dev/null 2>&1; then
+              gh release create catalog --repo "$REPO" --target "$GITHUB_SHA" --title "BMW AirPlay Store catalog" \
+                --notes "Store catalog for pllanaio/bmw-airplay. Choose Releases in MGU Store."
+            fi
+            gh release upload catalog dist/catalog.json --repo "$REPO" --clobber
+          fi

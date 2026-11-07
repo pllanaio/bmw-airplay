@@ -5,8 +5,8 @@
 #include <sys/stat.h>
 #include <string.h>
 
-static GstBuffer *frame(guint w, guint h) {
-    gint strides[GST_VIDEO_MAX_PLANES] = {(gint)w + 8, (gint)w / 2 + 4, (gint)w / 2 + 4, 0};
+static GstBuffer *frame(guint w, guint h, guint pad) {
+    gint strides[GST_VIDEO_MAX_PLANES] = {(gint)(w + pad), (gint)(w + pad) / 2, (gint)(w + pad) / 2, 0};
     gsize offsets[GST_VIDEO_MAX_PLANES] = {0, (gsize)strides[0] * h, 0, 0};
     offsets[2] = offsets[1] + strides[1] * (h / 2);
     GstBuffer *b = gst_buffer_new_allocate(NULL, offsets[2] + strides[2] * (h / 2), NULL);
@@ -50,13 +50,15 @@ int main(int argc, char **argv) {
     g_assert_no_error(error); g_assert_nonnull(pipeline);
     GstElement *src = gst_bin_get_by_name(GST_BIN(pipeline), "input");
     g_assert(gst_element_set_state(pipeline, GST_STATE_PLAYING) != GST_STATE_CHANGE_FAILURE);
-    const guint sizes[][2] = {{18,16}, {32,18}, {332,720}, {720,332}, {332,720}};
+    /* Padded strides use the row copy; the last, packed 720p frame the
+       single-copy fast path of the HLS output size. */
+    const guint sizes[][3] = {{18,16,8}, {32,18,8}, {332,720,8}, {720,332,8}, {332,720,8}, {1280,720,0}};
     for (guint i = 0; i < G_N_ELEMENTS(sizes); i++) {
         guint w = sizes[i][0], h = sizes[i][1];
         GstCaps *caps = gst_caps_new_simple("video/x-raw", "format", G_TYPE_STRING, "I420",
             "width", G_TYPE_INT, w, "height", G_TYPE_INT, h, "framerate", GST_TYPE_FRACTION, 30, 1, NULL);
         gst_app_src_set_caps(GST_APP_SRC(src), caps); gst_caps_unref(caps);
-        g_assert_cmpint(gst_app_src_push_buffer(GST_APP_SRC(src), frame(w, h)), ==, GST_FLOW_OK);
+        g_assert_cmpint(gst_app_src_push_buffer(GST_APP_SRC(src), frame(w, h, sizes[i][2])), ==, GST_FLOW_OK);
         check_frame(path, w, h, i + 1);
     }
     gst_element_set_state(pipeline, GST_STATE_NULL);

@@ -1,0 +1,27 @@
+[Unit]
+Description=BMW AirPlay by pllana.io receiver (Store runtime)
+After=persistency-fs.target alsaroutingadapters.service mdnsd.service mgu-uplink.service
+Wants=persistency-fs.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/node /var/opt/mgu-airplay/current/launch.js
+ExecStopPost=/usr/bin/node /var/opt/mgu-airplay/current/network.js remove
+Restart=always
+RestartSec=2
+KillMode=control-group
+TimeoutStopSec=15
+# Full CPU access for software H.264 decoding and scaling: no quota, the same
+# weight as system services, slightly raised priority for smooth audio/video.
+# The stock HMI keeps its own scheduling; no realtime class is used.
+CPUAccounting=yes
+CPUShares=1024
+Nice=-5
+MemoryAccounting=yes
+MemoryLimit=1G
+TasksMax=256
+OOMScoreAdjust=0
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

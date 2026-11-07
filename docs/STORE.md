@@ -1,5 +1,53 @@
 # MGU-Store-Anbindung
 
+## Installation und Updates über „Releases“ (ab 0.3.0, empfohlen)
+
+Ab 0.3.0 veröffentlicht dieses Repository vollständige Store-Pakete:
+
+| Komponente | Art | Inhalt |
+| --- | --- | --- |
+| `pllana_airplay` | App | iDrive-Oberfläche, SDK-frei; der Store erzeugt das oap-sdk aus einer BMW-Spender-App |
+| `mgu-airplay` | Tool | UxPlay-Empfänger mit privater GStreamer-Laufzeit, Firewall- und DNS-Einrichtung |
+
+Im MGU Store die Quelle `pllanaio/bmw-airplay` mit dem Kanal **Releases**
+verwenden (eine bestehende `branch:main`-Quelle auf Releases umstellen).
+Der Store installiert dann zuerst die Laufzeit und danach die App.
+
+Die Laufzeit ist nicht mehr an eine beim Bau feste App-UID gebunden: Ihr
+Dienst liest beim Start die UID, die der App-Manager `pllana_airplay`
+zugewiesen hat (`uids.txt`), und richtet Firewall-Regeln und Resolver genau
+dafür ein. Ressourcen: keine CPU-Quote, CPUShares 1024, Nice −5, 1 GiB
+Speicher, automatischer Neustart.
+
+Gebaut, getestet und veröffentlicht wird in GitHub Actions
+(`.github/workflows/store-release.yml`, Debian 12). Ein Push auf `main` mit
+einer neuen Version in `app.json`/`package.json` veröffentlicht `v<Version>`
+und schaltet danach den `catalog`-Release um. Bereits veröffentlichte
+Versionen werden nie überschrieben.
+
+**Früher privat installierte Laufzeit:** Wurde `mgu-airplay` vorher mit
+`deploy_runtime.py` installiert, gehört sie keiner Store-Quelle; der Store
+installiert nicht darüber („mgu-airplay is already installed“). Einmalig
+auf der Headunit entfernen und dann im Store installieren:
+
+~~~sh
+sh /var/opt/mgu-deploy/mgu-deploy.sh uninstall mgu-airplay --yes
+~~~
+
+## Fehlerbehebung: Update über den Store schlug fehl (behoben in 0.3.0)
+
+Der Store baut das Frontend auf der Headunit mit `tools/build_store.py`.
+Der Build verglich die Prüfsumme des mitgelieferten Schriftatlas
+(`assets/fonts/airplay.json`) mit `atlas-manifest.json`. Beide passten nicht
+zusammen, daher brach jeder Store-Build mit „Prebaked font atlas checksum
+differs“ ab. Das Manifest ist korrigiert; der vollständige Store-Build wurde
+lokal als unprivilegierter Benutzer mit dem festgelegten Kit-Stand geprüft.
+
+Weiterhin gilt: Das Frontend setzt die separat installierte Laufzeit
+`mgu-airplay` (mindestens 0.2.4) voraus. Der Store erkennt sie an
+`/var/opt/mgu-airplay/current/component.json`. Die App 0.3.0 läuft mit
+Laufzeit 0.2.4; die nativen Verbesserungen kommen mit Laufzeit 0.3.0.
+
 ## Was jetzt vorhanden ist
 
 Die Datei mgu-repo.json im Repository-Stamm folgt dem Repo-Tree-/apps-

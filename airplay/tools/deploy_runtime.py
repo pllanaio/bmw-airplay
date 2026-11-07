@@ -21,7 +21,7 @@ if result.returncode:
 uid = json.loads(result.stdout)['uid']
 if json.loads(result.stdout)['version'] != json.loads((ROOT / 'dist/airplay-build-provenance.json').read_text())['version']:
     raise SystemExit('installed_app_version_mismatch')
-if not isinstance(uid, int) or not 12203 <= uid <= 12450:
+if not isinstance(uid, int) or not 12203 <= uid <= 65535:
     raise SystemExit('unexpected_app_uid')
 state_file = ROOT / '.local/airplay/app-install.json'
 state = json.loads(state_file.read_text()); state.update(uid=uid, status='app_installed_backend_pending')
@@ -43,18 +43,17 @@ WorkingDirectory={home}/data
 Environment=MGU_AIRPLAY_RUNTIME=/var/opt/mgu-airplay/current/runtime
 Environment=HOME={home}/data
 NoNewPrivileges=yes
-Restart=on-failure
-RestartSec=3
+Restart=always
+RestartSec=2
 KillMode=control-group
 TimeoutStopSec=15
 MemoryAccounting=yes
-MemoryLimit=512M
+MemoryLimit=1G
 CPUAccounting=yes
-CPUQuota=150%
-CPUShares=128
-Nice=5
-TasksMax=128
-OOMScoreAdjust=500
+CPUShares=1024
+Nice=-5
+TasksMax=256
+OOMScoreAdjust=0
 UMask=0077
 
 [Install]
@@ -82,7 +81,7 @@ for name, proof in manifest['files'].items():
     entries.append(('runtime/' + name, data, mode))
 entries.append(('runtime/build-manifest.json', (runtime / 'build-manifest.json').read_bytes(), 0o644))
 component = {
-    'id': 'mgu-airplay', 'kind': 'tool', 'version': '0.2.4', 'title': 'Private AirPlay receiver runtime',
+    'id': 'mgu-airplay', 'kind': 'tool', 'version': '0.3.0', 'title': 'Private AirPlay receiver runtime',
     'description': 'UxPlay and SmartX audio, non-root service for pllana_airplay UID ' + str(uid),
     'internet': True, 'uids': [uid],
     'mguHmi': ['ID7'], 'files': [{'path': n, 'mode': format(m, '04o'), 'sha256': sha(b)} for n, b, m in entries],
@@ -90,8 +89,9 @@ component = {
     'enable': [{'unit': 'mgu-airplay.service', 'target': 'multi-user.target'}],
     'restart': ['mgu-airplay.service'], 'check': ['check.sh'],
     'crashNames': ['mgu-airplay', 'uxplay', 'airplay-launch', 'airplay-backend-launch'],
+    'uninstallable': True,
 }
-artifact = ROOT / 'dist/mgu-airplay@0.2.4.tgz'
+artifact = ROOT / 'dist/mgu-airplay@0.3.0.tgz'
 with tarfile.open(artifact, 'w:gz', compresslevel=1) as archive:
     for name, data, mode in [('component.json', json.dumps(component, indent=2).encode(), 0o644),
                              ('units/mgu-airplay.service', unit, 0o644)] + [('files/' + n, b, m) for n, b, m in entries]:

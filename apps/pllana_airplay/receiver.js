@@ -33,7 +33,9 @@ class Receiver extends EventEmitter {
         this.state = { phase: 'stopped', mode: null, pin: '', frame: null, file: '', audio: false, error: null };
     }
     update(fields) { Object.assign(this.state, fields); this.emit('state', Object.assign({}, this.state)); }
-    start() {
+    // options.keepPassword: an automatic restart after a receiver failure keeps
+    // the password the iPhone already knows, so it can reconnect at once.
+    start(options) {
         if (this.closed || this.child || this.stopPromise) return false;
         const launcher = path.join(this.runtime, 'bin/airplay-launch');
         const loader = path.join(this.runtime, 'lib/ld-linux-x86-64.so.2');
@@ -44,7 +46,9 @@ class Receiver extends EventEmitter {
         if (!fs.existsSync(this.dataDir)) fs.mkdirSync(this.dataDir, { mode: 0o700 });
         const token = crypto.randomBytes(4).readUInt32LE(0);
         const passwordMode = this.options.authentication === 'password';
-        const pin = String(passwordMode ? 100000 + token % 900000 : 1000 + token % 9000);
+        const reuse = options && options.keepPassword && passwordMode && /^[0-9]{6}$/.test(this.lastPassword || '');
+        const pin = reuse ? this.lastPassword : String(passwordMode ? 100000 + token % 900000 : 1000 + token % 9000);
+        if (passwordMode) this.lastPassword = pin;
         const identityFile = path.join(this.dataDir, 'identity.json');
         let device;
         if (fs.existsSync(identityFile)) {
@@ -196,7 +200,7 @@ class Receiver extends EventEmitter {
             if (frame && frame.sequence && key !== lastSequence) {
                 lastSequence = key; this.update({ phase: 'mirroring', frame });
             }
-        }, 250);
+        }, 100);
         return true;
     }
     signal(child, signal) {

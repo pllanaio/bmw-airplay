@@ -4,7 +4,8 @@ const sockets = [], writes = [], timers = [];
 let receiver, route, accept;
 class Receiver extends EventEmitter {
     constructor() { super(); receiver = this; this.state = {}; this.child = null; this.starts = 0; this.stops = 0; }
-    start() { this.child = {}; this.starts++; this.update({phase:'waiting'}); return true; }
+    start(options) { this.child = {}; this.starts++; this.lastOptions = options; this.update({phase:'waiting', error:null}); return true; }
+    crash() { this.child = null; this.update({phase:'error', error:'receiver_failed'}); this.emit('ended'); }
     stop() { this.child = null; this.stops++; return Promise.resolve(); }
     update(fields) { Object.assign(this.state, fields); this.emit('state', this.state); }
 }
@@ -14,6 +15,10 @@ class AudioRoute {
     release() { this.owned = false; return Promise.resolve(); }
     check() { return Promise.resolve(this.available); }
 }
+const scheduled = [];
+const fakeSetTimeout = (fn, ms) => { const t = { fn, ms }; scheduled.push(t); return t; };
+const fakeClearTimeout = t => { const i = scheduled.indexOf(t); if (i >= 0) scheduled.splice(i, 1); };
+const fire = ms => { const t = scheduled.find(x => x.ms === ms); assert(t, 'timer ' + ms + ' scheduled'); fakeClearTimeout(t); t.fn(); };
 const server = new EventEmitter();
 server.listen = (p, cb) => cb(); server.close = () => {};
 const fakeFs = {existsSync:()=>true,lstatSync:()=>({isSocket:()=>true,uid:12233}),unlinkSync:()=>{},writeFileSync:()=>{},chmodSync:()=>{}};
@@ -26,7 +31,7 @@ vm.runInNewContext(fs.readFileSync(require('path').join(__dirname,'../apps/pllan
     require:name=>{assert(modules[name],name); return modules[name];},
     __dirname:'/app/source/javascript',Buffer,Promise,Date,JSON,Error,
     process:{getuid:()=>12233,env:{},on:()=>{},exit:()=>{}},
-    setInterval:fn=>{timers.push(fn); return {unref:()=>{}};},clearInterval:()=>{},setTimeout,clearTimeout
+    setInterval:fn=>{timers.push(fn); return {unref:()=>{}};},clearInterval:()=>{},setTimeout:fakeSetTimeout,clearTimeout:fakeClearTimeout
 });
 const turn = () => new Promise(resolve=>setImmediate(resolve));
 (async()=>{
@@ -46,7 +51,33 @@ const turn = () => new Promise(resolve=>setImmediate(resolve));
     assert(!route.owned);
     route.available=true; s.emit('data','{"command":"start"}\n'); await turn();
     assert.strictEqual(receiver.starts,1,'retry audio without replacing receiver/password');
-    s.emit('data','{"command":"stop"}\n'); await turn();
+    // Native receiver crash: automatic restart with the known password.
+    receiver.crash(); await turn();
+    assert.strictEqual(receiver.state.phase, 'recovering');
+    fire(1000); await turn(); await turn();
+    assert(receiver.child, 'crashed receiver restarts automatically');
+    assert.strictEqual(receiver.lastOptions && receiver.lastOptions.keepPassword, true, 'restart keeps the password');
+    receiver.crash(); await turn(); assert(scheduled.some(t => t.ms === 2000), 'second failure backs off');
+    fire(2000); await turn(); await turn(); assert(receiver.child);
+    // Frontend vanishes (stalled app, app manager restart): keep the session.
+    const stopsBefore = receiver.stops;
+    s.destroy(); await turn();
+    assert(receiver.child, 'frontend loss does not end AirPlay immediately');
+    assert.strictEqual(receiver.stops, stopsBefore);
+    const s2 = new EventEmitter(); s2.destroyed=false; s2.writableLength=0;
+    s2.setEncoding=()=>{}; s2.write=data=>writes.push(JSON.parse(data)); s2.destroy=()=>{s2.destroyed=true;s2.emit('close');};
+    accept(s2); await turn();
+    assert(!scheduled.some(t => t.ms === 30000), 'reconnecting frontend cancels the grace stop');
+    assert(receiver.child);
+    // Without a reconnect the grace period ends the receiver.
+    s2.destroy(); await turn(); fire(30000); await turn(); await turn();
+    assert(!receiver.child, 'grace period ends an abandoned session');
+    const s3 = new EventEmitter(); s3.destroyed=false; s3.writableLength=0;
+    s3.setEncoding=()=>{}; s3.write=data=>writes.push(JSON.parse(data)); s3.destroy=()=>{s3.destroyed=true;s3.emit('close');};
+    accept(s3); s3.emit('data','{"command":"start"}\n'); await turn();
+    assert(receiver.child); assert.strictEqual(receiver.lastOptions, undefined, 'manual start uses a fresh password');
+    s3.emit('data','{"command":"stop"}\n'); await turn();
     assert(!receiver.child); assert(!route.owned);
-    console.log('Busy audio startup, media reacquisition, focus loss and explicit stop passed');
+    receiver.crash(); await turn(); assert(!scheduled.some(t => t.ms === 1000), 'no restart after explicit stop');
+    console.log('Busy audio startup, media reacquisition, focus loss, crash recovery, frontend grace and explicit stop passed');
 })().catch(e=>{console.error(e);process.exitCode=1;});

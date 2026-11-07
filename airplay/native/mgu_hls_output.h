@@ -14,17 +14,24 @@ static void mgu_hls_output(GstElement *player) {
     GstElement *audio = gst_parse_bin_from_description(description, TRUE, &error);
     if (error || !audio) g_error("MGU HLS audio pipeline could not be created");
     g_object_set(player, "audio-sink", audio, NULL);
-    /* Bound frame copies/textures to 720p; letterbox rather than stretch. */
+    /* Bound frame copies/textures to 720p; letterbox rather than stretch.
+       One combined convert+scale pass (GStreamer 1.22 videoconvertscale)
+       instead of two full-frame passes, spread over two threads: software
+       scaling of 1080p YouTube renditions was the main cause of dropped
+       frames on the head unit CPU. A 720p I420 source passes through. */
     GstElement *filter = gst_parse_bin_from_description(
-        "videoconvert ! videoscale add-borders=true ! "
+        "queue max-size-buffers=3 max-size-bytes=0 max-size-time=0 leaky=no ! "
+        "videoconvertscale add-borders=true n-threads=2 dither=none method=bilinear ! "
         "capsfilter caps=\"video/x-raw,format=I420,width=1280,height=720,pixel-aspect-ratio=1/1\"",
         TRUE, &error);
     if (error || !filter) g_error("MGU HLS video filter could not be created");
     g_object_set(player, "video-filter", filter, NULL);
     /* Prefill before playback instead of repeatedly opening/pausing audio at
-       startup. A fixed network-speed hint avoids a heavy first rendition. */
-    g_object_set(player, "buffer-duration", (gint64)(3 * GST_SECOND),
-                 "buffer-size", (gint)(4 * 1024 * 1024), "connection-speed", (guint64)2500, NULL);
+       startup. A fixed network-speed hint avoids a heavy first rendition.
+       Five seconds (about one YouTube segment) ride out the short throughput
+       dips of a phone hotspot without a visible stall. */
+    g_object_set(player, "buffer-duration", (gint64)(5 * GST_SECOND),
+                 "buffer-size", (gint)(8 * 1024 * 1024), "connection-speed", (guint64)2500, NULL);
     gint flags = 0;
     g_object_get(player, "flags", &flags, NULL);
     flags &= ~GST_PLAY_FLAG_DOWNLOAD; /* No unbounded on-disk video cache. */
