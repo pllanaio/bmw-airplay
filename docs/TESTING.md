@@ -27,9 +27,14 @@ Alternativ die folgenden Dateien einzeln mit Node ausführen:
 | airplay/test_receiver.js | Node-8-Startverhalten, stabiler Gerätename/-kennung, Passwortmodus, Modus-/Rückkehrzustände, begrenzte Absturzdiagnose |
 | airplay/test_frontend_lifecycle.js | UI-/Fokuswechsel erhalten die Sitzung, Stop/Schließen beenden sie |
 | airplay/test_video_bridge.js | Neuer Frame-Transport, geändertes Layout und Renderer-Wiederverbindung |
+| airplay/test_backend_client.js | Profilwahl, getrenntes Videoende/Trennen und Ende der Oberfläche ohne impliziten Stop |
 | airplay/test_network.js | BMW-WLAN ohne Startadresse, wlan1, eigene Regeln nach Uplink-Neuaufbau, keine Änderung fremder Regeln und Monitor-Lebenszyklus |
 | airplay/test_resolver.js | Kein Uplink, Hotspot-Verlust, USB-/WLAN-DNS-Wechsel und Erhalt der privaten Resolver-Inode |
 | airplay/test_logo_bridge.js | Native Logo-Nachrichten, Alpha-Behandlung und Wiederverwendung |
+| airplay/test_audio_metadata.js | Begrenzte DMAP-Zustände, privater JPEG-/PNG-Export, asynchroner Decoder, veraltete Jobs und Aufräumen |
+| airplay/test_music_artwork_bridge.js | Begrenztes privates RGBA, native Alpha-Behandlung, Wiederverbindung und Entfernen alter Cover |
+| airplay/test_music_view.js | Titelansicht und fünf Touch-/iDrive-Ziele nur bei bestätigten Senderfähigkeiten |
+| airplay/test_music_controls.js | Echte HTTP-DACP-Anfragen, Statusabfragen, begrenzte Befehle, Authentifizierung und veraltete Sitzungen |
 
 Das sind Verhaltensprüfungen mit gezielten Ersatzschnittstellen. Sie
 führen weder echte BMW-Audiomanager-Aufrufe noch einen iPhone-Handshake aus.
@@ -42,7 +47,7 @@ Nach dem Workstation-Build:
 node airplay/test_presentation.js
 ~~~
 
-Geprüft werden die tatsächliche private SDK-Kopie, 1920×720-Präsentation,
+Geprüft werden die tatsächliche private SDK-Kopie, 1920×504-/1920×720-Präsentation,
 Rückkehr der Bedienelemente und vorhandene deutsche Glyphen.
 
 ## Native Tests
@@ -62,14 +67,17 @@ Die Prüfungen umfassen:
 - hundert Audio-Stop/Start-Zyklen bei gleichzeitig eintreffenden Paketen;
 - Abweisen verspäteter Audio-Bus-Ereignisse nach dem Stop;
 - Audio-Start-Sperre während der HLS-Übernahme;
+- tatsächliche ALAC-Dekodierung vor und nach Audio-Stop/Neustart;
+- nativer DMAP-/Artwork-Export und echte private JPEG-/PNG-Dekodierung zu 256×256 RGBA;
 - Anfangspufferung und ausdrückliche Pause;
 - mehrfaches Zerstören und spätere Playback-Info-Anfragen;
 - getrennte alte/neue lokale Playlist-Routen;
 - direkte textbasierte und binäre Play-Requests;
 - Erhalt des YouTube-FCUP-Pfades;
 - Ablehnen nicht unterstützter direkter Medien-URLs;
-- native Erkennung Spiegelung → HLS, Ignorieren von Telefon-Pause/Stop/HLS-TEARDOWN,
-  Erhalt der Playlist bei playlistRemove und Rückkehr über Ende/„Zur Spiegelung“;
+- native Erkennung beider Video-Ursprünge, Beachten von Telefon-Pause/Stop/Medien-TEARDOWN,
+  Abbruch bereits während FCUP-Laden, Erhalt laufender Videos bei reiner
+  Spiegelungsbereinigung und korrekte Rückkehr über Ende/„Zur Spiegelung“;
 - drei aufeinanderfolgende Titel über den tatsächlichen AirPlay-HTTP-Server,
   `playlistInsert` und erhaltene Steuer-/Rückkanalverbindungen;
 - fragmentierte ACK-Header und ACK-Body ohne vorzeitiges Senden des nächsten
@@ -89,7 +97,7 @@ test_hls.py erzeugt lokal H.264/AAC-Testmaterial und kann getrennte
 Video-/Audio-fMP4-Playlists bereitstellen. Es prüft die private Laufzeit:
 
 - tatsächliche Verwendung des alten hlsdemux statt hlsdemux2;
-- I420-Frames mit 1280×720;
+- I420-Frames mit 1920×504;
 - Audio mit acht Kanälen, 48 kHz und S16LE;
 - Ende der Wiedergabe und Aufräumen;
 - Ablehnen eines nicht vertrauten HTTPS-Zertifikats;
@@ -140,3 +148,19 @@ SDK-Donor und das festgelegte öffentliche Kit.
 - Den serienmäßigen CarPlay-Dienst nicht als Testschalter stoppen.
 - Rohprotokolle, vollständige URLs mit Tokens, Pairing-Daten und
   Fahrzeugidentifikatoren nicht in öffentliche Testberichte übernehmen.
+
+## Zusätzliche Prüfungen für 0.4.4
+
+`test_lifecycle.sh` führt auch `test_audio_mode.cpp` (native Audiofähigkeiten,
+Flush/Teardown und kein Videopfad) sowie `test_audio_decode.py` aus. Letzterer
+erzeugt mit FFmpeg einen lokalen ALAC-Frame und prüft echte dekodierte
+PCM-Ausgabe vor und nach Audio-Stop/Neustart.
+
+`python3 airplay/tools/test_hls.py --cover` prüft tatsächliche dekodierte
+1920×504-Pixel für 16:9, 21:9, 16:10, Hochformat, ein breiteres Format und
+80:21. Bildfüllung, Mittelpunkt und fehlende künstliche Balken werden im
+Bildinhalt geprüft; die Bridge-Tests sichern proportionalen Cover-Beschnitt
+am Zielrechteck ab. Die Referenz ist ein synthetisches Quellbild.
+
+Die iPhone-/Fahrzeugmatrix für Stop, beide Videomodi, reines Audio und die
+neue Bildfüllung steht in [MEDIA_MODES.md](MEDIA_MODES.md).

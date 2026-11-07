@@ -6,21 +6,31 @@ def once(text, old, new):
     return text.replace(old, new)
 
 def patch(upstream, source, ux, video):
+    # GLib's application name is immutable for the process, including rebuilds.
+    video = once(video, '    if (!appname || strcmp(appname,server_name))  g_set_application_name(server_name);',
+                 '    if (!appname) g_set_application_name(server_name);')
     video = once(video, 'static bool hls_video = false;', '''static bool hls_video = false;
 /* 0 mirror, 1 HLS, 2 mirror renderer being rebuilt. Never route RTP into HLS. */
 static gint mgu_hls_owner = 0;
+static gint mgu_hls_stop_requested = 0;
+static gint mgu_hls_desired_play = 1;
 static gboolean mgu_hls_play_requested = FALSE;
 static float mgu_hls_start_fraction = 0.0f;
 bool video_renderer_is_hls_active(void) { return g_atomic_int_get(&mgu_hls_owner) == 1; }
-void video_renderer_begin_hls_transition(void) { g_atomic_int_set(&mgu_hls_owner, 1); }
+void video_renderer_begin_hls_transition(void) { g_atomic_int_set(&mgu_hls_stop_requested, 0); g_atomic_int_set(&mgu_hls_desired_play, 1); g_atomic_int_set(&mgu_hls_owner, 1); }
 ''')
     video = once(video, '    hls_video = (uri != NULL);',
-                 '    g_atomic_int_set(&mgu_hls_owner, uri ? 1 : 2);\n    mgu_hls_play_requested = (uri != NULL);\n    hls_video = (uri != NULL);')
+                 '    g_atomic_int_set(&mgu_hls_owner, uri ? 1 : 2);\n    mgu_hls_play_requested = (uri != NULL && g_atomic_int_get(&mgu_hls_desired_play));\n    hls_video = (uri != NULL);')
     video = once(video, '    hls_buffer_empty = TRUE;\n    hls_buffer_empty = FALSE;',
                  '    hls_buffer_empty = TRUE;\n    hls_buffer_full = FALSE;')
     video = once(video, 'void video_renderer_pause() {',
-                 'void video_renderer_pause() {\n    if (hls_video) mgu_hls_play_requested = FALSE;')
+                 '''void video_renderer_pause() {
+    if (video_renderer_is_hls_active()) g_atomic_int_set(&mgu_hls_desired_play, 0);
+    if (hls_video) mgu_hls_play_requested = FALSE;
+    else if (video_renderer_is_hls_active()) return;''')
     video = once(video, 'void video_renderer_resume() {', '''void video_renderer_resume() {
+    if (video_renderer_is_hls_active()) g_atomic_int_set(&mgu_hls_desired_play, 1);
+    if (!hls_video && video_renderer_is_hls_active()) return;
     if (hls_video) {
         mgu_hls_play_requested = TRUE;
         if (!hls_buffer_full) return;
@@ -80,6 +90,8 @@ void video_renderer_begin_hls_transition(void) { g_atomic_int_set(&mgu_hls_owner
     }
 }''')
     video = once(video, 'if (hls_video && renderer->eos)', 'if (hls_video && renderer && renderer->eos)')
+    video = once(video, 'bool video_renderer_eos_watch() {', '''bool video_renderer_eos_watch() {
+    if (g_atomic_int_compare_and_exchange(&mgu_hls_stop_requested, 1, 0)) return true;''')
     anchor = '        if (!hls_video || closed_window) {'
     video = once(video, anchor, '''        if (hls_video && !closed_window) {
             mgu_hls_play_requested = FALSE;
@@ -110,12 +122,10 @@ static void mgu_renderer_unlock(GRecMutex **lock) { g_rec_mutex_unlock(*lock); }
     (source / 'renderers/video_renderer.h').write_text(header)
     video += '''
 void video_renderer_request_hls_stop(void) {
-    MGU_RENDER_GUARD;
-    mgu_hls_play_requested = FALSE;
-    if (hls_video && renderer) {
-        gst_element_set_state(renderer->pipeline, GST_STATE_READY);
-        renderer->eos = TRUE;
-    }
+    /* The HTTP thread also serves local HLS GETs. Never take the renderer
+     * lock or change pipeline state here: teardown can await such a GET.
+     * GLib's EOS/reset callback performs the actual state change. */
+    g_atomic_int_set(&mgu_hls_stop_requested, 1);
 }
 '''
 

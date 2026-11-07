@@ -10,6 +10,9 @@ from patch_hls_lifecycle import patch as patch_hls_lifecycle
 from patch_detach import patch as patch_detach
 from patch_reverse import patch as patch_reverse
 from patch_playlist import patch as patch_playlist
+from patch_audio_mode import patch as patch_audio_mode
+from patch_audio_metadata import patch as patch_audio_metadata
+from patch_music_control import patch as patch_music_control
 
 ROOT = Path(__file__).resolve().parents[2]
 WORK = ROOT / '.local/airplay'
@@ -80,11 +83,16 @@ def main():
     ux_text = patch_detach(ux_text, source)
     patch_reverse(source, WORK / 'UxPlay')
     ux_text, video_text = patch_playlist(source, ux_text, video_text)
+    ux_text, video_text = patch_audio_mode(source, ux_text, video_text)
+    ux_text, video_text = patch_audio_metadata(source, ux_text, video_text)
+    ux_text = patch_music_control(source, ux_text)
     for name in ['mgu_reverse.h', 'mgu_playlist.h']:
         shutil.copy2(ROOT / 'airplay/native' / name, source / 'lib' / name)
     shutil.copy2(ROOT / 'airplay/native/mgu_direct_play.h', source / 'lib/mgu_direct_play.h')
     ux_text += '\n#include "mgu_crash_trace.h"\n'
     shutil.copy2(ROOT / 'airplay/native/mgu_crash_trace.h', source / 'mgu_crash_trace.h')
+    shutil.copy2(ROOT / 'airplay/native/mgu_audio_metadata.h', source / 'mgu_audio_metadata.h')
+    shutil.copy2(ROOT / 'airplay/native/mgu_music_control.h', source / 'mgu_music_control.h')
     ux_source.write_text(ux_text)
     video_source.write_text(video_text)
     shutil.copy2(ROOT / 'airplay/native/mgu_hls_output.h', source / 'renderers/mgu_hls_output.h')
@@ -109,6 +117,9 @@ def main():
          '-o', RUNTIME / 'bin/airplay-launch'])
     run(['gcc', '-static', '-O2', '-Wall', '-Wextra', '-Werror', ROOT / 'airplay/native/backend_launch.c',
          '-o', RUNTIME / 'bin/airplay-backend-launch'])
+    run(['gcc', '-O2', '-Wall', '-Wextra', '-Werror', '-I', mdns / 'mDNSShared',
+         ROOT / 'airplay/native/mgu_dacp_resolve.c', '-L' + str(dns.parent), '-ldns_sd',
+         '-o', RUNTIME / 'bin/mgu-dacp-resolve'])
     flags = subprocess.check_output(['pkg-config', '--cflags', '--libs', 'gstreamer-video-1.0'], text=True).split()
     run(['gcc', '-shared', '-fPIC', '-O2', '-Wall', '-Wextra', '-Werror',
          ROOT / 'airplay/native/gstmguvideosink.c', '-o', RUNTIME / 'plugins/libgstmguvideo.so'] + flags)
@@ -116,8 +127,8 @@ def main():
     shutil.copy2(dns, RUNTIME / 'lib/libdns_sd.so')
     # Mirroring and YouTube HLS; no system plugin discovery on the target.
     plugin_names = ['coreelements', 'app', 'libav', 'videoparsersbad', 'audioparsers',
-                    'videoconvertscale', 'videofilter', 'audioconvert', 'audioresample',
-                    'volume', 'level', 'typefindfunctions', 'jpeg', 'imagefreeze', 'pango',
+                    'videoconvertscale', 'videocrop', 'videofilter', 'audioconvert', 'audioresample',
+                    'volume', 'level', 'typefindfunctions', 'jpeg', 'png', 'imagefreeze', 'pango',
                     'playback', 'autodetect', 'alsa', 'audiotestsrc',
                     'soup', 'adaptivedemux2', 'hls', 'isomp4', 'mpegtsdemux', 'matroska', 'tcp', 'deinterlace']
     plugins = Path('/usr/lib/x86_64-linux-gnu/gstreamer-1.0')
@@ -132,7 +143,8 @@ def main():
     tls = Path('/usr/lib/x86_64-linux-gnu/gio/modules/libgiognutls.so')
     shutil.copy2(tls, RUNTIME / 'gio' / tls.name)
     shutil.copy2('/etc/ssl/certs/ca-certificates.crt', RUNTIME / 'etc/ca-certificates.crt')
-    roots = list((RUNTIME / 'plugins').glob('*.so')) + [RUNTIME / 'bin/uxplay', RUNTIME / 'bin/gst-launch-1.0', dns, soup, tls]
+    roots = list((RUNTIME / 'plugins').glob('*.so')) + [RUNTIME / 'bin/uxplay', RUNTIME / 'bin/gst-launch-1.0',
+            RUNTIME / 'bin/mgu-dacp-resolve', dns, soup, tls]
     # Native SmartX plugins load these at runtime. Do not mix the HU's glibc 2.27
     # internals (notably libdl/libpthread) into the private glibc runtime.
     libraries = {name: Path('/usr/lib/x86_64-linux-gnu') / name for name in
@@ -171,13 +183,19 @@ def main():
         executable.chmod(0o755)
     (RUNTIME / 'lib/ld-linux-x86-64.so.2').chmod(0o755)
     record = {
-        'format': 'mgu-airplay-runtime-v1', 'version': '0.4.3', 'architecture': 'x86_64',
+        'format': 'mgu-airplay-runtime-v1', 'version': '0.4.4', 'architecture': 'x86_64',
         'uxplay': {'version': '1.73.7', 'revision': UX_REV},
         'mdns_client': {'version': '765.20.4', 'revision': MDNS_REV, 'daemon': 'existing MGU mdnsd'},
         'source_patch': {'file': 'lib/CMakeLists.txt', 'sha256': sha(cmake)},
         'connection_events_patch_sha256': sha(ux_source),
         'hls_renderer_patch_sha256': sha(video_source),
-        'features': ['detach', 'native-detach', 'playlist'],
+        'features': ['detach', 'native-detach', 'playlist', 'video-modes', 'media-stop', 'audio-only', 'video-cover', 'audio-metadata', 'music-control'],
+        'audio_profile_patch_sha256': sha(ROOT / 'airplay/tools/patch_audio_mode.py'),
+        'audio_metadata_patch_sha256': sha(ROOT / 'airplay/tools/patch_audio_metadata.py'),
+        'audio_metadata_sha256': sha(ROOT / 'airplay/native/mgu_audio_metadata.h'),
+        'music_control_patch_sha256': sha(ROOT / 'airplay/tools/patch_music_control.py'),
+        'music_control_sha256': sha(ROOT / 'airplay/native/mgu_music_control.h'),
+        'dacp_resolver_sha256': sha(ROOT / 'airplay/native/mgu_dacp_resolve.c'),
         'hls_output_sha256': sha(ROOT / 'airplay/native/mgu_hls_output.h'),
         'crash_trace_sha256': sha(ROOT / 'airplay/native/mgu_crash_trace.h'),
         'direct_play_sha256': sha(ROOT / 'airplay/native/mgu_direct_play.h'),

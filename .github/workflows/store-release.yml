@@ -29,7 +29,7 @@ jobs:
         run: |
           apt-get update
           DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-            ca-certificates git python3 nodejs build-essential cmake ninja-build pkg-config \
+            ca-certificates git python3 nodejs build-essential cmake ninja-build pkg-config ffmpeg \
             libssl-dev libplist-dev libglib2.0-dev libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev \
             gstreamer1.0-tools gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-plugins-bad \
             gstreamer1.0-libav gstreamer1.0-alsa gstreamer1.0-x libsoup-3.0-0 glib-networking file
@@ -56,12 +56,16 @@ jobs:
         run: |
           R=.build/airplay/runtime
           "$R/lib/ld-linux-x86-64.so.2" --library-path "$R/lib" --list "$R/bin/uxplay" > /dev/null
+          "$R/lib/ld-linux-x86-64.so.2" --library-path "$R/lib" --list "$R/bin/mgu-dacp-resolve" > /dev/null
+          ! readelf -d "$R/bin/mgu-dacp-resolve" | grep -q 'Shared library: \[/'
           "$R/lib/ld-linux-x86-64.so.2" --library-path "$R/lib" "$R/bin/uxplay" -h > uxplay-help.txt 2>&1 || true
           grep -q -- '-hls' uxplay-help.txt
           GST_PLUGIN_SYSTEM_PATH_1_0= GST_PLUGIN_PATH_1_0="$R/plugins" GST_REGISTRY="$PWD/registry.bin" \
             "$R/lib/ld-linux-x86-64.so.2" --library-path "$R/lib" "$R/bin/gst-launch-1.0" -q \
             fakesrc num-buffers=0 ! queue max-size-buffers=3 max-size-bytes=0 max-size-time=0 ! \
-            videoconvertscale add-borders=true n-threads=2 dither=none method=bilinear ! fakesink
+            video/x-raw ! aspectratiocrop aspect-ratio=80/21 ! \
+            videoconvertscale add-borders=false n-threads=2 dither=none method=bilinear ! \
+            video/x-raw,format=I420,width=1920,height=504,pixel-aspect-ratio=1/1 ! fakesink
           # The HLS output filter (mgu_hls_output.h) must find these bundled elements.
           GST_PLUGIN_SYSTEM_PATH_1_0= GST_PLUGIN_PATH_1_0="$R/plugins" GST_REGISTRY="$PWD/registry.bin" \
             "$R/lib/ld-linux-x86-64.so.2" --library-path "$R/lib" "$R/bin/gst-launch-1.0" -q \
@@ -72,11 +76,14 @@ jobs:
           gcc -O2 -Wall airplay/native/test_video_sink.c -o test_video_sink $flags
           GST_PLUGIN_PATH=.build/airplay/runtime/plugins ./test_video_sink
           sh airplay/tools/test_lifecycle.sh
+          python3 airplay/tools/test_hls.py --cover
       - name: JavaScript and Store contract tests
         run: |
           node airplay/test_audio_route.js && node airplay/test_backend.js && node airplay/test_receiver.js
           node airplay/test_frontend_lifecycle.js && node airplay/test_video_bridge.js && node airplay/test_logo_bridge.js
-          node airplay/test_diagnose.js && node airplay/test_network.js && node airplay/test_resolver.js
+          node airplay/test_backend_client.js && node airplay/test_diagnose.js && node airplay/test_network.js && node airplay/test_resolver.js
+          node airplay/test_audio_metadata.js && node airplay/test_music_artwork_bridge.js && node airplay/test_music_view.js
+          node airplay/test_music_controls.js
           python3 test/test_store_contract.py
       - name: Package runtime tool and app
         run: |

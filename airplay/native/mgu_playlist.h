@@ -22,6 +22,19 @@ static pthread_mutex_t *mgu_playlist_trylock(void) {
     return pthread_mutex_trylock(&mgu_playlist_mutex) == 0 ? &mgu_playlist_mutex : NULL;
 }
 #define MGU_PLAYLIST_GUARD pthread_mutex_t *mgu_playlist_guard __attribute__((cleanup(mgu_playlist_unlock))) = mgu_playlist_lock()
+static void mgu_playlist_discard_pending(raop_t *raop) {
+    pthread_mutex_lock(&mgu_reverse_mutex);
+    struct mgu_reverse_queue *queue = raop->mgu_reverse_queue;
+    if (queue) {
+        int keep = queue->inflight ? 1 : 0;
+        for (int i = keep; i < queue->count; i++) {
+            queue->bytes -= queue->lengths[i]; free(queue->messages[i]);
+            queue->messages[i] = NULL; queue->lengths[i] = 0;
+        }
+        queue->count = keep;
+    }
+    pthread_mutex_unlock(&mgu_reverse_mutex);
+}
 static void mgu_http_handler_play_original(raop_conn_t *, http_request_t *, http_response_t *, char **, int *);
 static void http_handler_play(raop_conn_t *, http_request_t *, http_response_t *, char **, int *);
 
@@ -131,7 +144,10 @@ static bool mgu_playlist_action(raop_conn_t *conn, http_request_t *request, http
         /* Active removal keeps the existing detach-aware handling. */
         plist_mem_free(uuid); plist_mem_free(type); plist_free(root); return false;
     }
-    if (raop->mgu_playlist_cancelled) { mgu_playlist_bad(response, 409); goto done; }
+    /* Explicit stop waits for the next sender request on this same session.
+     * /play and playlistInsert are both valid ways to select another video.
+     * Force-cancel still rejects a stale automatic continuation. */
+    if (raop->mgu_playlist_cancelled && !raop->mgu_accept_after_stop) { mgu_playlist_bad(response, 409); goto done; }
     char *location = mgu_item_string(item, "Content-Location");
     int known = get_playlist_by_uuid(raop, uuid);
     if (!location && known >= 0) {
@@ -213,7 +229,7 @@ static void http_handler_play(raop_conn_t *conn, http_request_t *request, http_r
         airplay_video_t *video = raop->airplay_video[raop->current_video];
         /* Standard HTTP media and FCUP must expose the same sender item UUID. */
         set_playback_uuid(video, uuid, strlen(uuid)); set_apple_session_id(video, session, strlen(session));
-        raop->mgu_terminal = false; raop->mgu_playlist_cancelled = false;
+        raop->mgu_terminal = false; raop->mgu_playlist_cancelled = false; raop->mgu_accept_after_stop = false;
         memset(&raop->mgu_last_info, 0, sizeof raop->mgu_last_info);
         snprintf(raop->mgu_active_session, sizeof raop->mgu_active_session, "%s", session);
         snprintf(raop->mgu_active_uuid, sizeof raop->mgu_active_uuid, "%s", uuid);
@@ -232,7 +248,7 @@ static void http_handler_play(raop_conn_t *conn, http_request_t *request, http_r
         snprintf(raop->mgu_active_uuid, sizeof raop->mgu_active_uuid, "%s", get_playback_uuid(video));
         snprintf(raop->mgu_active_session, sizeof raop->mgu_active_session, "%s", get_apple_session_id(video));
         snprintf(raop->mgu_active_source, sizeof raop->mgu_active_source, "%s", get_playback_location(video));
-        raop->mgu_terminal = raop->mgu_playlist_cancelled = false;
+        raop->mgu_terminal = raop->mgu_playlist_cancelled = raop->mgu_accept_after_stop = false;
         raop->mgu_action_at_end = 0; memset(&raop->mgu_last_info, 0, sizeof raop->mgu_last_info);
     }
 }

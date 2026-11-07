@@ -81,7 +81,7 @@ python3 airplay/tools/deploy_runtime.py --install
 
 Ohne --install erfolgen Übertragung und MGU-Deploy-Prüfung; mit --install
 erfolgt die Installation. App und native Laufzeit werden separat versioniert:
-App und Laufzeit 0.4.3 gehören zusammen; beide Pakete aktualisieren.
+App und Laufzeit 0.4.4 gehören zusammen; beide Pakete aktualisieren.
 
 Die Audio-Probe-Werkzeuge unter airplay/tools sind historische Entwicklungs-
 und Diagnosehilfen mit firmwareabhängigen Profilen. Sie gehören nicht zum

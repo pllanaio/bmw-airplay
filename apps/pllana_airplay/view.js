@@ -16,6 +16,12 @@ function modeCard(c, x, title, sub, kind) {
     if (kind === 'phone') {
         c.strokeRoundRect(x + 25, 352, 27, 48, 6, 2, COLORS.blue);
         c.line(x + 34, 393, x + 43, 393, 2, COLORS.blue);
+    } else if (kind === 'audio') {
+        c.line(x + 34, 356, x + 58, 350, 3, COLORS.mint);
+        c.line(x + 34, 356, x + 34, 390, 3, COLORS.mint);
+        c.line(x + 58, 350, x + 58, 384, 3, COLORS.mint);
+        c.circle(x + 28, 392, 7, COLORS.mint);
+        c.circle(x + 52, 386, 7, COLORS.mint);
     } else {
         c.roundRect(x + 21, 359, 43, 30, 8, '#d84c53');
         c.quad([[x + 39, 366], [x + 49, 374], [x + 39, 382], [x + 39, 366]], '#ffffff');
@@ -23,30 +29,71 @@ function modeCard(c, x, title, sub, kind) {
     text(c, title, x + 83, 371, 27, COLORS.ink);
     text(c, sub, x + 83, 408, 22, COLORS.muted);
 }
-function drawHome(c, state, notice, logo) {
+function shorten(value, count) {
+    const chars = Array.from(value || '');
+    return chars.length > count ? chars.slice(0, count - 1).join('') + '…' : chars.join('');
+}
+function fit(c, value, size, width, count) {
+    let result = shorten(value, count);
+    if (c.textWidth) while (result.length > 1 && c.textWidth(result, size, { font: 'airplay', literal: true }) > width) {
+        count--; result = shorten(value, count);
+    }
+    return result;
+}
+function musicButton(c, x, width, label, action, enabled, active, onControl) {
+    const color = !enabled ? '#617184' : active ? COLORS.mint : COLORS.ink;
+    c.roundRect(x, 313, width, 77, 17, active && enabled ? '#173b36' : COLORS.card);
+    c.strokeRoundRect(x, 313, width, 77, 17, 1, active && enabled ? '#397f70' : COLORS.edge);
+    text(c, label, x + width / 2, 359, 25, color, { align: 'center' });
+    if (enabled && onControl && c.target) c.target(x, 313, width, 77, () => onControl(action), 'music-' + action, 17);
+}
+function drawMusic(c, state, artwork, onControl) {
+    const music = state.music || {}, controls = music.controls || {};
+    c.roundRect(48, 111, 300, 300, 24, COLORS.card);
+    if (!artwork || !artwork.draw(c, 48, 111, 300, 300)) {
+        c.line(171, 199, 221, 186, 5, COLORS.blue);
+        c.line(171, 199, 171, 292, 5, COLORS.blue);
+        c.line(221, 186, 221, 279, 5, COLORS.blue);
+        c.circle(155, 297, 16, COLORS.blue); c.circle(205, 284, 16, COLORS.blue);
+    }
+    text(c, fit(c, music.title || 'Deine Musik.', 45, 1158, 46), 394, 171, 45, COLORS.ink, { literal: true });
+    text(c, fit(c, music.artist || (state.pin ? 'AirPlay-Audio am iPhone wählen' : 'Unten „Nur Audio“ wählen.'), 29, 1155, 67), 397, 224, 29, COLORS.muted, { literal: true });
+    text(c, fit(c, music.album || (state.pin && !music.title ? 'BMW AirPlay by pllana.io · Code ' + state.pin : ''), 25, 1155, 76), 397, 266, 25, COLORS.muted, { literal: true });
+    musicButton(c, 394, 152, 'Zurück', 'previous', controls.previous, false, onControl);
+    musicButton(c, 560, 194, music.playbackState === 'playing' ? 'Pause' : music.playbackState === 'paused' || music.playbackState === 'stopped' ? 'Abspielen' : 'Play / Pause', 'playPause', controls.playPause, false, onControl);
+    musicButton(c, 768, 152, 'Weiter', 'next', controls.next, false, onControl);
+    musicButton(c, 934, 272, 'Shuffle' + (music.shuffle === 0 ? ': aus' : music.shuffle === 1 ? ': an' : ''), 'shuffle', controls.shuffle, music.shuffle === 1, onControl);
+    musicButton(c, 1220, 332, 'Repeat' + (music.repeat === 0 ? ': aus' : music.repeat === 1 ? ': ein Titel' : music.repeat === 2 ? ': alle' : ''), 'repeat', controls.repeat, music.repeat > 0, onControl);
+    const available = Object.keys(controls).filter(key => controls[key]).length;
+    text(c, available === 5 ? 'Wiedergabe über dein iPhone. Ton über deinen BMW.' : available ? 'Weitere Funktionen kannst du am iPhone steuern.' : 'Wiedergabe am iPhone starten. Steuerung wird vom Sender freigegeben.', 397, 437, 23, COLORS.muted);
+}
+function drawHome(c, state, notice, logo, artwork, onControl) {
     c.clear(COLORS.bg);
     c.gradientRect(0, 0, 1600, 520, [[0, '#111d2c'], [0.68, COLORS.bg], [1, '#0b141d']]);
     if (logo) logo.draw(c, 38, 18, 64, 64);
     else c.image(LOGO, 38, 18, 64, 64);
     text(c, 'BMW AirPlay by pllana.io', 119, 58, 24, COLORS.blue, { spacing: 1 });
+    const audioOnly = state.profile === 'audio', audioPlaying = state.phase === 'audio';
     const waiting = state.phase === 'waiting', loading = state.phase === 'loading';
     const busy = state.phase === 'starting' || state.phase === 'stopping' || state.phase === 'recovering' || loading;
-    const status = state.playlistPending ? 'Wartet auf YouTube' : state.detached ? 'Video läuft unabhängig' : loading ? 'Video wird geladen' : waiting ? 'Empfang bereit' : state.phase === 'error' ? 'Verbindung prüfen' : busy ? 'Einen Moment …' : 'Nicht verbunden';
+    const status = audioOnly && state.music && state.music.playbackState === 'paused' ? 'Musik pausiert' : audioPlaying ? 'Musik läuft' : state.playlistPending ? 'Wartet auf YouTube' : state.detached ? 'Video läuft unabhängig' : loading ? 'Video wird geladen' : waiting ? (audioOnly ? 'Audio bereit' : 'Empfang bereit') : state.phase === 'error' ? 'Verbindung prüfen' : busy ? 'Einen Moment …' : 'Nicht verbunden';
     c.roundRect(1274, 28, 278, 44, 22, COLORS.card);
-    c.circle(1298, 50, 5, waiting ? COLORS.mint : state.phase === 'error' ? '#ffb178' : COLORS.muted);
-    text(c, status, 1316, 58, 22, waiting ? COLORS.mint : COLORS.muted);
+    c.circle(1298, 50, 5, waiting || audioPlaying ? COLORS.mint : state.phase === 'error' ? '#ffb178' : COLORS.muted);
+    text(c, status, 1316, 58, 22, waiting || audioPlaying ? COLORS.mint : COLORS.muted);
 
+    if (audioOnly) drawMusic(c, state, artwork, onControl);
+    else {
     text(c, 'Dein iPhone.', 48, 156, 62, COLORS.ink);
     text(c, 'Dein BMW.', 48, 226, 62, COLORS.ink);
-    text(c, 'Bild und Ton. Drahtlos auf deinem Display.', 51, 280, 28, COLORS.muted);
-    modeCard(c, 48, 'Bildschirm spiegeln', 'Im iPhone-Kontrollzentrum starten', 'phone');
-    modeCard(c, 540, 'YouTube übertragen', state.directVideo === false ? 'Über Bildschirmsynchronisierung' : 'AirPlay direkt in YouTube wählen', 'youtube');
+    text(c, audioOnly ? 'AirPlay-Musik über deine BMW-Lautsprecher.' : 'Bild und Ton. Drahtlos auf deinem Display.', 51, 280, 28, COLORS.muted);
+    modeCard(c, 48, audioOnly ? 'Musik übertragen' : 'Bildschirm spiegeln', audioOnly ? 'AirPlay-Audio am iPhone wählen' : 'Im iPhone-Kontrollzentrum starten', audioOnly ? 'audio' : 'phone');
+    modeCard(c, 540, audioOnly ? 'Spotify & YouTube Music' : 'YouTube übertragen', audioOnly ? 'Am iPhone starten und steuern' : state.directVideo === false ? 'Über Bildschirmsynchronisierung' : 'AirPlay direkt in YouTube wählen', audioOnly ? 'audio' : 'youtube');
 
     c.card(1054, 100, 498, 341, 26, [[0, '#1b2e43'], [1, '#101b29']]);
     c.strokeRoundRect(1054, 100, 498, 341, 26, 1, '#30475e');
     text(c, state.pin ? 'BMW AirPlay by pllana.io' : 'Bereit, wenn du es bist.', 1084, 151, 29, COLORS.ink);
     if (state.pin) {
-        text(c, 'Am iPhone wählen und Code eingeben', 1084, 192, 23, COLORS.muted);
+        text(c, audioOnly ? 'Am iPhone als Audioausgabe wählen' : 'Am iPhone wählen und Code eingeben', 1084, 192, 23, COLORS.muted);
         const code = String(state.pin);
         const gap = 10, cell = Math.min(62, (438 - (code.length - 1) * gap) / code.length);
         const left = 1303 - (code.length * cell + (code.length - 1) * gap) / 2;
@@ -55,19 +102,24 @@ function drawHome(c, state, notice, logo) {
             text(c, code[i], left + i * (cell + gap) + cell / 2, 283, 50, '#ffffff', { align: 'center', literal: true });
         }
         text(c, 'BMW-WLAN oder gemeinsames WLAN.', 1084, 356, 23, COLORS.muted);
-        text(c, state.directVideo === false ? 'Ohne Uplink: Video bleibt gespiegelt.' : 'Lautstärke wie gewohnt am iDrive.', 1084, 395, 23, COLORS.muted);
+        text(c, audioOnly ? 'Pause und Titelwahl am iPhone.' : state.directVideo === false ? 'Ohne Uplink: Video bleibt gespiegelt.' : 'Lautstärke wie gewohnt am iDrive.', 1084, 395, 23, COLORS.muted);
     } else {
         airplay(c, 1258, 201, 90, COLORS.blue);
-        text(c, busy ? 'Verbindung wird vorbereitet.' : 'Unten „Verbinden“ drücken.', 1303, 337, 25, COLORS.ink, { align: 'center' });
+        text(c, busy ? 'Verbindung wird vorbereitet.' : audioOnly ? 'Unten „Nur Audio“ wählen.' : 'Unten „Verbinden“ drücken.', 1303, 337, 25, COLORS.ink, { align: 'center' });
         text(c, 'Am iPhone denselben Empfänger wählen.', 1303, 389, 22, COLORS.muted, { align: 'center' });
+    }
     }
     const errors = { runtime_missing: 'Empfangssoftware fehlt.', discovery_failed: 'Geräteerkennung nicht erreichbar.',
         media_unsupported: 'Dieses Video kann der Empfänger nicht abspielen.',
         media_failed: 'Video konnte nicht geladen werden. Empfang bleibt bereit.',
         receiver_failed: 'Verbindung beendet. Bitte erneut verbinden.', backend_unavailable: 'Empfangsdienst wird verbunden …',
-        receiver_recovering: 'Empfang wird automatisch wiederhergestellt …' };
-    text(c, notice || errors[state.error] || (state.audioError ? 'Für BMW-Ton erneut „Verbinden“ wählen.' : 'Leon Pllana IT-Solutions'), 50, 490, 24,
-        notice || state.error || state.audioError ? '#ffbc8e' : COLORS.muted);
+        receiver_recovering: 'Empfang wird automatisch wiederhergestellt …',
+        music_control_failed: 'Musiksteuerung nicht erreichbar. Am iPhone weiter steuern.' };
+    const controlErrors = { music_control_failed: 'Musiksteuerung nicht erreichbar. Am iPhone weiter steuern.',
+        music_control_busy: 'Musiksteuerung beschäftigt. Kurz warten.', music_control_stale: 'Musikverbindung wird aktualisiert.' };
+    const controlError = audioOnly && state.music && controlErrors[state.music.controlError];
+    text(c, notice || errors[state.error] || controlError || (state.audioError ? (audioOnly ? 'Für BMW-Ton erneut „Nur Audio“ wählen.' : 'Für BMW-Ton erneut „Verbinden“ wählen.') : 'Leon Pllana IT-Solutions'), 50, 490, 24,
+        notice || state.error || state.audioError || controlError ? '#ffbc8e' : COLORS.muted);
     text(c, 'pllana.io', 1552, 490, 24, COLORS.blue, { align: 'right' });
 }
 module.exports = { drawHome };

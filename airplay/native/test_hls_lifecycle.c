@@ -6,6 +6,16 @@
 void logger_log(logger_t *l, int level, const char *fmt, ...) { (void)l; (void)level; (void)fmt; }
 int logger_get_level(logger_t *l) { (void)l; return LOGGER_WARNING; }
 static gint feeding = 1;
+static GMutex stop_mutex;
+static GCond stop_condition;
+static gboolean stop_returned = FALSE;
+static gpointer request_stop(gpointer ignored) {
+    (void) ignored;
+    video_renderer_request_hls_stop();
+    g_mutex_lock(&stop_mutex); stop_returned = TRUE;
+    g_cond_signal(&stop_condition); g_mutex_unlock(&stop_mutex);
+    return NULL;
+}
 static gpointer mirror_packets(gpointer ignored) {
     (void)ignored;
     unsigned char packet[] = {0, 0, 0, 1, 0x09, 0xf0}; /* H.264 access-unit delimiter. */
@@ -48,6 +58,21 @@ int main(int argc, char **argv) {
     gst_message_unref(buffered);
     gst_element_get_state(r->pipeline, &state, NULL, 100 * GST_MSECOND);
     g_assert_cmpint(state, !=, GST_STATE_PLAYING); /* Buffer fill must respect an explicit pause. */
+    /* The HTTP thread serves the HLS GET that a renderer teardown may await.
+       Its stop request must complete even while GLib owns the renderer lock;
+       only the GLib EOS/reset watcher may perform the pipeline state change. */
+    g_atomic_int_set(&mgu_hls_natural_end, 1);
+    g_rec_mutex_lock(&mgu_renderer_mutex);
+    GThread *stopper = g_thread_new("http-stop", request_stop, NULL);
+    g_mutex_lock(&stop_mutex);
+    gint64 stop_deadline = g_get_monotonic_time() + 2 * G_TIME_SPAN_SECOND;
+    while (!stop_returned && g_cond_wait_until(&stop_condition, &stop_mutex, stop_deadline)) {}
+    g_assert_true(stop_returned);
+    g_mutex_unlock(&stop_mutex);
+    g_rec_mutex_unlock(&mgu_renderer_mutex);
+    g_thread_join(stopper);
+    g_assert(video_renderer_eos_watch());
+    g_assert(!video_renderer_hls_completed());
     video_renderer_destroy();
     g_assert_null(renderer); g_assert_null(renderer_type[0]);
     video_renderer_destroy(); /* Second teardown must not unref freed objects. */
@@ -58,6 +83,17 @@ int main(int argc, char **argv) {
     g_setenv("MGU_HLS_AUDIO_SINK", "fakesink", TRUE);
     g_setenv("G_TLS_CA_FILE", "/etc/ssl/certs/ca-certificates.crt", TRUE);
     videoflip_t transform[2] = {NONE, NONE};
+    /* A sender can pause immediately after /play, before the GLib rebuild
+       has created an HLS pipeline. Initialization must retain that pause. */
+    video_renderer_begin_hls_transition(); video_renderer_pause();
+    video_renderer_init(NULL, "test", transform, "h264parse", "", "avdec_h264", "videoconvert",
+        "fakesink", "", false, false, false, false, 2, "http://127.0.0.1/master.m3u8");
+    g_assert(!mgu_hls_play_requested && !g_atomic_int_get(&mgu_hls_desired_play));
+    video_renderer_resume(); g_assert(mgu_hls_play_requested);
+    video_renderer_destroy();
+    video_renderer_begin_hls_transition(); video_renderer_pause();
+    video_renderer_begin_hls_transition(); /* A new accepted item replaces the paused reservation. */
+    g_assert(g_atomic_int_get(&mgu_hls_desired_play));
     for (int n = 0; n < 3; n++) {
         video_renderer_init(NULL, "test", transform, "h264parse", "", "avdec_h264", "videoconvert",
             "fakesink", "", false, false, false, false, 2, "http://127.0.0.1/master.m3u8");
@@ -77,7 +113,7 @@ int main(int argc, char **argv) {
         g_usleep(2000); video_renderer_destroy();
     }
     g_atomic_int_set(&feeding, 0); g_thread_join(packets);
-    g_print("HLS ownership, initial buffering, explicit pause, repeated teardown and late playback queries passed\n");
+    g_print("HLS ownership, initial buffering, explicit pause, nonblocking HTTP stop, repeated teardown and late playback queries passed\n");
     g_print("Concurrent mirror packets during 12 mirror/HLS renderer rebuilds passed\n");
     return 0;
 }

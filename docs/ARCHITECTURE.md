@@ -36,12 +36,16 @@ Die App-Dateien liegen in apps/pllana_airplay.
 | backend_client.js | Privater Backend-Socket, Heartbeat, Wiederverbindung |
 | video_bridge.js | Verbindung des aktuellen Frame-Transportes zum Renderer |
 | logo_bridge.js | Native Logo-Nachrichten und Ressourcenverwaltung |
+| music_artwork_bridge.js | Privates RGBA-Thumbnail, Renderer-Upload und Freigabe alter Cover |
+| audio_metadata.js | Begrenzte Metadaten und asynchrone Cover-Dekodierung |
+| music_controls.js | An den gekoppelten Sender gebundene DACP-Steuerung |
 | brand_logo.js | Komprimierte Pixel des eigenen Logos |
 
 Der sichtbare Name lautet durchgängig „BMW AirPlay by pllana.io“.
 Das OAP-Symbol hat 140×140 Pixel und passt in den BMW-Auswahlrahmen.
 Die Verbindungssicht ist auf 1600×520 logischen Pixeln aufgebaut.
-Die native Präsentationsansicht verwendet das gesamte 1920×720-Display.
+Die native Präsentationsansicht verwendet die tatsächliche Displaygröße,
+einschließlich 1920×504 und 1920×720.
 
 Ein Touch- oder Controller-Ereignis blendet die normalen Bedienelemente
 für acht Sekunden ein. Das erste Ereignis wird nicht zusätzlich als Klick
@@ -63,16 +67,15 @@ einen Receiver, verwaltet die eigene Audioverbindung und liefert Zustände
 an das Frontend. Der Kontrollsocket ist nur für diese Identität zugänglich.
 
 - Frontend-Heartbeat: alle zwei Sekunden.
-- Backend-Lease: sieben Sekunden.
+- Backend-Heartbeat-Timeout: zwölf Sekunden.
 - Frontend-Socket-Wiederverbindung: nach zwei Sekunden.
 - Medienmoduswechsel sollen denselben nativen Receiver erhalten.
 - Ein Bildschirm-/Fokuswechsel beendet die Sitzung nicht absichtlich.
-- „Trennen“, „Schließen“ oder ein tatsächliches App-/Backend-Ende räumen auf.
+- „Trennen“, „Schließen“ oder ein Backend-Ende räumen auf.
 
-Eine Bildschirmüberlagerung ist von einem echten Prozessende zu
-unterscheiden. Wird die OAP-App vom System beendet, kann das Frontend
-keine Lease mehr halten; diese Situation ist keine zugesagte unbegrenzte
-Hintergrundsitzung.
+Ein verlorenes Frontend erhält im Videoprofil eine Wiederverbindungsfrist
+von 30 Sekunden. Das gewählte Audioprofil bleibt ohne Oberfläche aktiv,
+bis es ausdrücklich beendet wird oder der Backend-Dienst endet.
 
 Beim regulären Beenden wird die eigene Receiver-Prozessgruppe zunächst
 mit SIGTERM beendet; nach einem kurzen Timeout folgt gegebenenfalls SIGKILL.
@@ -84,12 +87,14 @@ Der Zustand enthält getrennte Informationen:
 
 | Feld | Bedeutung |
 | --- | --- |
-| phase | stopped, starting, waiting, loading, mirroring, stopping oder error |
-| mode | mirror, hls, waiting oder kein Modus |
+| phase | stopped, starting, waiting, loading, mirroring, audio, recovering, stopping oder error |
+| profile | video oder audio |
+| mode | mirror, hls, waiting, audio oder kein Modus |
 | returnMode | Rückkehr zur Spiegelung oder zum Warten nach einem Video |
 | playlistPending | Natürlicher Titelabschluss gemeldet; die Sitzung erwartet einen möglichen Folgetitel |
 | frame/file | Aktuell freigegebener Frame und sein Transport |
 | audio/audioError | Eigene Audioverbindung und deren Verfügbarkeit |
+| music | Titel, Interpret, Album, privates Thumbnail und bestätigte Fernsteuerfähigkeiten/-zustände |
 | error | Bekannter Empfangs-/Medienfehler |
 
 phase=mirroring bezeichnet im aktuellen Code eine aktive Frame-Ausgabe;
@@ -161,14 +166,35 @@ GStreamer-Aufbau nicht aus, um hlsdemux2 zu vermeiden.
 Die HLS-Ausgabe nutzt:
 
 - Softwaredekodierung;
-- I420 mit 1280×720 Ausgabefläche;
-- erhaltenes Seitenverhältnis mit gegebenenfalls schwarzen Rändern;
+- I420 mit 1920×504 Ausgabefläche;
+- zentrierter Beschnitt auf 80:21 bei erhaltenem Seitenverhältnis, ohne zusätzliche Ränder;
 - drei Sekunden Pufferdauer und vier MiB Pufferbudget;
 - eine Verbindungsratenempfehlung von 2500 kbit/s;
 - keine unbeschränkte Download-Datei als Videocache.
 
 Diese Ausgabegrenze beschränkt nicht automatisch Auflösung oder Codec
 des tatsächlich heruntergeladenen Quellstreams.
+
+## Wiedergabeprofile und Rückkehrziel ab 0.4.4
+
+Das native Video meldet `MGU_ORIGIN mirror|direct` und nach Ende
+`MGU_RETURN mirror|waiting`. Ausdrückliche Mediensteuerung bleibt wirksam;
+Spiegelungstransport und eigenständiger HLS-Player haben getrennte Lebensdauer.
+Nach einem direkten Video dürfen alte RTP-/Codec-Pakete keine Spiegelung
+starten. Ein neuer expliziter Spiegelungs-SETUP gibt diesen Pfad wieder frei.
+
+„Video beenden“ sendet ein ausschließlich durch die angekündigte Fähigkeit
+`media-stop` freigeschaltetes SIGWINCH an die eigene Receiver-Prozessgruppe.
+SIGUSR2 bleibt die ausdrückliche Rückkehr zur Spiegelung. Stop-/Pause-Signale
+werden nicht pauschal als Hintergrundereignisse ignoriert.
+
+Das Profil `audio` startet mit `-vs 0`, ohne HLS, und mit `MGU_AUDIO_ONLY=1`.
+Die native Ankündigung enthält keine Video-/Foto-/Spiegelungsfähigkeiten.
+`MGU_AUDIO_PLAY` und `MGU_AUDIO_WAITING` melden den Empfangsstatus. Das Backend
+hält das gewählte Audio-Profil nach einem Verlust der Oberfläche aktiv;
+Frontend-Ende trennt dessen Socket, eine ausdrückliche Trennaktion den
+Receiver. Das Videoprofil behält seine begrenzte Wiederverbindungsfrist.
+[Bedienung und Grenzen](MEDIA_MODES.md).
 
 ## YouTube-Warteschlangen
 
@@ -188,6 +214,13 @@ Titelende gemeldet werden. „Zur Spiegelung“ bleibt auch in der Lücke zwisch
 zwei Titeln verfügbar und verwirft die ausstehende Fortsetzung. Die eigentliche
 Warteschlange und die Auswahl des nächsten Videos bleiben auf dem iPhone.
 [Bedienung und Fahrzeug-Testmatrix](PLAYLISTS.md).
+
+Die VideoBridge stellt HLS-Videos bildfüllend dar und beschneidet die
+überstehende Cover-Fläche auf das tatsächliche Zielrechteck. Der vorhandene
+Renderer bekommt dafür eine größere, proportional skalierte Fläche unter
+einem Clip. Für die Bildschirmspiegelung bleibt dessen normale
+vollständige Aspect-Fit-Darstellung aktiv. Ein Renderer-Protokollwechsel
+ist dafür nicht erforderlich.
 
 ## Frame-Transport
 
@@ -238,13 +271,36 @@ Offline-Resolver zurückgesetzt; ihre Inode bleibt für den Bind-Mount erhalten.
 
 Der Netzwerk-Helfer bearbeitet nur die eigenen markierten Regeln für
 die festen AirPlay-Ports und lokalen WLAN-Netze auf wlan_bridge, wlan0 und
-wlan1. Der Root-Supervisor gleicht die Regeln regelmäßig ab, auch wenn der
+wlan1. Für DACP kommt eine ausgehende TCP-Freigabe dieser App-UID zu
+privaten/linklokalen WLAN-Zielen auf dynamischen Ports ab 1024 hinzu.
+Der Sender veröffentlicht seinen Steuerport über DNS-SD; er ist nicht auf
+einen festen Port begrenzt. Die Anwendung verbindet nur zur numerischen
+Adresse des authentifizierten Audio-Senders und dessen aufgelöstem DACP-Port.
+Die Ausnahme öffnet keine zusätzlichen eingehenden oder weitergeleiteten
+Verbindungen. Der Root-Supervisor gleicht die Regeln regelmäßig ab, auch wenn der
 Uplink seine Tabelle beim Verbindungswechsel neu erstellt. Unveränderte
 Regeln werden nicht neu geschrieben. Er ersetzt keine
 globale Firewall-Policy und keine BMW-Default-Route.
 
 Für HTTPS wird der private CA-Store beim TLS-Backend registriert.
 Zertifikatsprüfung bleibt eingeschaltet.
+
+## Musiktitel und Fernsteuerung
+
+Nur der authentifizierte Eigentümer einer RAOP-Audiositzung kann einen
+privaten DACP-Deskriptor veröffentlichen. Zugangstoken und Senderadresse
+verlassen den Backend-Prozess nicht. DNS-SD wird über den bestehenden
+BMW-mdnsd und einen begrenzten Resolver-Helfer abgefragt.
+Play/Pause und Titelwechsel verwenden feste DACP-Endpunkte. Shuffle und
+Repeat werden erst nach erfolgreicher Zustandsabfrage freigegeben; die
+Oberfläche übernimmt keine optimistisch gesetzten Werte. Zeitlimits,
+begrenzte Warteschlange und Sitzungsepochen verhindern, dass eine alte
+oder nicht antwortende Telefonverbindung das Stoppen blockiert.
+
+AirPlay-DMAP-Metadaten und JPEG-/PNG-Cover werden größenbegrenzt in einem
+privaten Sitzungsverzeichnis exportiert. Ein separater Decoder erzeugt
+höchstens 256×256 RGBA-Pixel, mit Zeit- und Ausgabelimit. Titelwechsel,
+Neuverbindung und Trennen räumen alte Cover und Steuerfähigkeiten auf.
 
 ## Gleichzeitigkeit und bekannte Grenze
 

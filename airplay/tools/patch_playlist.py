@@ -16,7 +16,7 @@ def patch(source, ux, video):
     raop_path = source / 'lib/raop.c'
     raop = raop_path.read_text()
     raop = once(raop, '    int current_video;', '''    int current_video;
-    bool mgu_terminal, mgu_terminal_detached, mgu_continue_detached, mgu_inserting, mgu_playlist_cancelled;
+    bool mgu_terminal, mgu_terminal_detached, mgu_continue_detached, mgu_inserting, mgu_playlist_cancelled, mgu_accept_after_stop;
     int mgu_action_at_end;
     double mgu_active_start;
     playback_info_t mgu_terminal_info, mgu_last_info;
@@ -55,15 +55,39 @@ void raop_playlist_cancel(raop_t *raop) {
     bool had_item = raop->mgu_active_uuid[0] || raop->mgu_terminal;
     raop->mgu_terminal = raop->mgu_terminal_detached = raop->mgu_continue_detached = false;
     raop->mgu_playlist_cancelled = true;
+    raop->mgu_accept_after_stop = false;
     if (had_item) mgu_reverse_clear(raop);
     if (had_item) { printf("MGU_PLAYLIST_CANCELLED\\n"); fflush(stdout); }
 }
+void raop_playlist_stop(raop_t *raop) {
+    MGU_PLAYLIST_GUARD;
+    if (!raop) return;
+    bool had_item = !raop->mgu_playlist_cancelled && (raop->mgu_active_uuid[0] || raop->mgu_terminal);
+    bool already_stopped = raop->mgu_playlist_cancelled && raop->current_video < 0;
+    raop->mgu_terminal = raop->mgu_terminal_detached = raop->mgu_continue_detached = false;
+    raop->mgu_playlist_cancelled = true;
+    if (!already_stopped) raop->mgu_accept_after_stop = true;
+    raop->current_video = -1;
+    /* Retain a transmitted request until its ACK is drained. Dropping it and
+     * reusing the socket would let its delayed ACK acknowledge a later item.
+     * Unsent end events are cancelled without disconnecting the PTTH link. */
+    mgu_playlist_discard_pending(raop);
+    if (had_item) { printf("MGU_PLAYLIST_CANCELLED\\n"); fflush(stdout); }
+}
+void raop_playlist_control(raop_t *raop, void (*control)(void *), void *data) {
+    MGU_PLAYLIST_GUARD;
+    if (raop && control) control(data);
+}
+void raop_playlist_hold(raop_t *raop) {
+    MGU_PLAYLIST_GUARD;
+    if (raop) raop->mgu_accept_after_stop = false;
+}
+void *raop_playlist_transition_begin(raop_t *raop) { return raop ? mgu_playlist_lock() : NULL; }
+void raop_playlist_transition_end(void *guard) { if (guard) pthread_mutex_unlock(guard); }
 void raop_handle_hls_stop(raop_t *raop) {
     MGU_PLAYLIST_GUARD;
     if (!raop) return;
-    raop->mgu_terminal = raop->mgu_terminal_detached = raop->mgu_continue_detached = false;
-    raop->mgu_playlist_cancelled = true;
-    raop->current_video = -1;
+    raop_playlist_stop(raop);
     raop->callbacks.video_reset(raop->callbacks.cls, RESET_TYPE_HLS_EOS);
 }
 void raop_handle_eos(raop_t *raop) {
@@ -107,6 +131,11 @@ void raop_playlist_poll_end(raop_t *raop, bool (*ended)(void), bool (*completed)
     header = once(header, 'void raop_handle_eos(raop_t *raop);', '''void raop_handle_eos(raop_t *raop);
 void raop_handle_hls_stop(raop_t *raop);
 void raop_playlist_cancel(raop_t *raop);
+void raop_playlist_stop(raop_t *raop);
+void raop_playlist_control(raop_t *raop, void (*control)(void *), void *data);
+void raop_playlist_hold(raop_t *raop);
+void *raop_playlist_transition_begin(raop_t *raop);
+void raop_playlist_transition_end(void *guard);
 bool raop_playlist_waiting(raop_t *raop);
 bool raop_playlist_continue_detached(raop_t *raop);
 void raop_playlist_poll_end(raop_t *raop, bool (*ended)(void), bool (*completed)(void), void (*ready)(void));''')
@@ -167,8 +196,7 @@ int http_response_get_status(http_response_t *response) {
 ''' + http[end:]
     # Explicit stop remains explicit and never masquerades as natural completion.
     anchor = '    raop->callbacks.on_video_stop(raop->callbacks.cls);'
-    http = once(http, anchor, '''    if (!raop->callbacks.is_hls_detached || !raop->callbacks.is_hls_detached(raop->callbacks.cls))
-        raop_playlist_cancel(raop);
+    http = once(http, anchor, '''    raop_playlist_stop(raop);
 ''' + anchor)
     # Never assert on a partially initialized cached item after a failed request.
     http = once(http, 'if (raop->airplay_video[i] && !strcmp(uuid, get_playback_uuid(raop->airplay_video[i])))',
@@ -184,12 +212,8 @@ int http_response_get_status(http_response_t *response) {
     http_path.write_text(http)
     # Complete sender-controlled continuation can inherit the detached mirror origin,
     # while a later unrelated /play never inherits it.
-    ux = once(ux, 'g_atomic_int_set(&mgu_detached, g_atomic_int_get(&mgu_mirror_active));',
-              'bool continuing_detached = raop_playlist_continue_detached(raop);\n    g_atomic_int_set(&mgu_detached, g_atomic_int_get(&mgu_mirror_active) || continuing_detached);')
-    ux = once(ux, '''static gboolean mgu_signal_resume_mirror(gpointer data) {
-    (void) data;''', '''static gboolean mgu_signal_resume_mirror(gpointer data) {
-    (void) data;
-    raop_playlist_cancel(raop);''')
+    ux = once(ux, 'g_atomic_int_set(&mgu_detached, g_atomic_int_get(&mgu_mirror_active) || (pending_origin && g_atomic_int_get(&mgu_return_mirror)));',
+              'bool continuing_detached = raop_playlist_continue_detached(raop);\n    g_atomic_int_set(&mgu_detached, g_atomic_int_get(&mgu_mirror_active) || continuing_detached || (pending_origin && g_atomic_int_get(&mgu_return_mirror)));')
     ux = once(ux, 'MGU_FEATURES native-detach\\n', 'MGU_FEATURES native-detach\\nMGU_FEATURES playlist\\n')
     start = ux.index('static gboolean video_eos_watch_callback (gpointer loop) {')
     end = ux.index('\n#define MAX_VIDEO_RENDERERS', start)
@@ -225,7 +249,7 @@ static gint mgu_hls_pipeline_generation = 0;''')
     video = once(video, '    case GST_MESSAGE_ERROR: {', '    case GST_MESSAGE_ERROR: {\n        if (hls_video) g_atomic_int_set(&mgu_hls_natural_end, 0);')
     anchor = '    case GST_MESSAGE_EOS:\n        /* end-of-stream */'
     video = once(video, anchor, anchor + '\n        if (hls_video) g_atomic_int_set(&mgu_hls_natural_end, 1);')
-    anchor = 'void video_renderer_request_hls_stop(void) {\n    MGU_RENDER_GUARD;'
+    anchor = 'void video_renderer_request_hls_stop(void) {'
     video = once(video, anchor, anchor + '\n    g_atomic_int_set(&mgu_hls_natural_end, 0);')
     video += '''
 bool video_renderer_hls_completed(void) { return g_atomic_int_get(&mgu_hls_natural_end) != 0; }

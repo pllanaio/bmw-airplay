@@ -18,4 +18,38 @@ bridge.attach('/dev/shm/mgu-video-test', '1:43');
 assert.strictEqual(messages.length, 4, 'renderer reconnect redefines video');
 bridge.detach();
 assert.strictEqual(messages[4], 14);
-console.log('Video transport replacement, layout resize and reconnect passed');
+function draw(frame, target, fit) {
+    const bytes = new ArrayBuffer(256), c = { n: 0, f: new Float32Array(bytes), u: new Uint32Array(bytes),
+        _grow() {}, clip(x, y, w, h) {
+            this.u[this.n++] = 13;
+            [x, y, w, h].forEach(v => { this.f[this.n++] = v; });
+            return this;
+        }, noclip() { this.u[this.n++] = 14; return this; } };
+    bridge.draw(c, target.x, target.y, target.w, target.h, frame, fit);
+    return c;
+}
+function near(a, b) { assert(Math.abs(a - b) < 0.002, a + ' != ' + b); }
+const formats = [[1920, 1080], [2520, 1080], [1920, 1200], [1080, 1920], [2560, 504], [1920, 504]];
+for (const target of [{ x: 0, y: 0, w: 1920, h: 504 }, { x: 20, y: 30, w: 1600, h: 520 }]) {
+    for (const size of formats) {
+        const c = draw({ width: size[0], height: size[1] }, target);
+        assert.strictEqual(c.n, 13);
+        assert.strictEqual(c.u[0], 13, 'crop is clipped to the requested viewport');
+        [target.x, target.y, target.w, target.h].forEach((v, i) => near(c.f[i + 1], v));
+        assert.strictEqual(c.u[5], 19);
+        const x = c.f[6], y = c.f[7], w = c.f[8], h = c.f[9];
+        // The contain-only native renderer receives the source aspect, so it
+        // adds no bars. Its clipped destination covers every viewport pixel.
+        near(w / h, size[0] / size[1]);
+        assert(x <= target.x + 0.002 && y <= target.y + 0.002);
+        assert(x + w >= target.x + target.w - 0.002 && y + h >= target.y + target.h - 0.002);
+        near(x + w / 2, target.x + target.w / 2);
+        near(y + h / 2, target.y + target.h / 2);
+        assert.strictEqual(c.u[12], 14, 'following UI drawing is not clipped');
+        const mirror = draw({ width: size[0], height: size[1] }, target, 'contain');
+        [target.x, target.y, target.w, target.h].forEach((v, i) => near(mirror.f[i + 6], v));
+        assert.strictEqual(mirror.u[5], 19, 'mirroring keeps native aspect fit and the complete phone UI');
+    }
+}
+assert.strictEqual(draw(null, { x: 0, y: 0, w: 1920, h: 504 }).n, 0);
+console.log('Video transport replacement, resize/reconnect, complete phone mirroring and centred video cover crops for 16:9, 21:9, 16:10, portrait and ultrawide passed');

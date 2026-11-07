@@ -19,9 +19,12 @@ static GstPadProbeReturn audio_probe(GstPad *pad, GstPadProbeInfo *info, gpointe
     audio_buffers++; gst_caps_unref(caps); return GST_PAD_PROBE_OK;
 }
 int main(int argc, char **argv) {
-    gst_init(&argc, &argv); g_assert(argc == 2 || argc == 3);
+    gst_init(&argc, &argv); g_assert(argc == 4 || argc == 5);
+    const guint source_width = atoi(argv[2]), source_height = atoi(argv[3]);
+    const gboolean legacy_playbin = argc == 5;
+    g_assert(source_width > 0 && source_height > 0);
     gchar *path = g_strdup_printf("/dev/shm/mgu-video-hls-test-%d", getpid());
-    GstElement *player = gst_element_factory_make(argc == 3 ? "playbin" : "playbin3", NULL);
+    GstElement *player = gst_element_factory_make(legacy_playbin ? "playbin" : "playbin3", NULL);
     GstElement *video = gst_element_factory_make("mguvideosink", NULL);
     g_assert_nonnull(player); g_assert_nonnull(video);
     g_object_set(video, "location", path, NULL);
@@ -44,7 +47,7 @@ int main(int argc, char **argv) {
         gst_element_set_state(player, GST_STATE_NULL); gst_object_unref(player); g_free(path); return 2;
     }
     g_assert_cmpuint(audio_buffers, >, 0);
-    if (argc == 3) {
+    if (legacy_playbin) {
         GstIterator *it = gst_bin_iterate_recurse(GST_BIN(player));
         GValue value = G_VALUE_INIT; gboolean legacy = FALSE, modern = FALSE;
         while (gst_iterator_next(it, &value) == GST_ITERATOR_OK) {
@@ -59,13 +62,48 @@ int main(int argc, char **argv) {
         g_print("Confirmed legacy hlsdemux, not hlsdemux2\n");
     }
     guint32 header[16]; int fd = open(path, O_RDONLY);
-    g_assert_cmpint(fd, >=, 0); g_assert_cmpint(read(fd, header, 64), ==, 64); close(fd);
-    g_assert_cmpuint(header[2], ==, 1280); g_assert_cmpuint(header[3], ==, 720);
+    g_assert_cmpint(fd, >=, 0); g_assert_cmpint(read(fd, header, 64), ==, 64);
+    g_assert_cmpuint(header[2], ==, 1920); g_assert_cmpuint(header[3], ==, 504);
     g_assert_cmpuint(header[4], >, 0);
+    const guint width = header[2], height = header[3];
+    guint8 *luma = g_malloc(width * height);
+    const off_t slot = 64 + header[5] * width * height * 3 / 2;
+    g_assert_cmpint(pread(fd, luma, width * height, slot), ==, width * height);
+    close(fd);
+    /* Fixtures encode Y=64+80*x/source_width+80*y/source_height. Check
+       decoded pixels against an aspect-preserving central cover crop. This
+       catches both letterboxing and stretching, including horizontal crops
+       for inputs wider than the screen, rather than checking caps alone. */
+    const double sx = (double)width / source_width, sy = (double)height / source_height;
+    const double scale = sx > sy ? sx : sy;
+    const double left = (source_width - width / scale) / 2;
+    const double top = (source_height - height / scale) / 2;
+    const guint xs[] = {8, width / 2, width - 9}, ys[] = {8, height / 2, height - 9};
+    for (guint iy = 0; iy < G_N_ELEMENTS(ys); ++iy) {
+        for (guint ix = 0; ix < G_N_ELEMENTS(xs); ++ix) {
+            const double x = left + (xs[ix] + 0.5) / scale;
+            const double y = top + (ys[iy] + 0.5) / scale;
+            const gint expected = 64 + 80 * x / source_width + 80 * y / source_height;
+            const gint actual = luma[ys[iy] * width + xs[ix]];
+            if (ABS(expected - actual) > 6)
+                g_error("%ux%u cover pixel %u,%u: expected Y=%d, got %d",
+                        source_width, source_height, xs[ix], ys[iy], expected, actual);
+        }
+    }
+    for (guint x = 0; x < width; ++x) {
+        g_assert_cmpuint(luma[x], >, 54);
+        g_assert_cmpuint(luma[(height - 1) * width + x], >, 54);
+    }
+    for (guint y = 0; y < height; ++y) {
+        g_assert_cmpuint(luma[y * width], >, 54);
+        g_assert_cmpuint(luma[y * width + width - 1], >, 54);
+    }
+    g_free(luma);
     gst_element_set_state(player, GST_STATE_NULL);
     gst_message_unref(message); gst_object_unref(bus); gst_object_unref(pad);
     gst_object_unref(probe); gst_object_unref(audio); gst_object_unref(player);
     g_assert_cmpint(access(path, F_OK), ==, -1); g_free(path);
-    g_print("HLS HTTP playback: 720p I420 frames, 8-channel 48 kHz S16LE audio, EOS and cleanup passed\n");
+    g_print("HLS %ux%u: 1920x504 I420 centre crop without bars/stretch, 8-channel 48 kHz S16LE audio, EOS and cleanup passed\n",
+            source_width, source_height);
     return 0;
 }
