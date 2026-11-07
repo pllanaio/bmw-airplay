@@ -1,5 +1,21 @@
 # MGU-Store-Anbindung
 
+## Ab 0.4.0: Empfänger „pllana-airplay-receiver“
+
+Die Laufzeit heißt jetzt `pllana-airplay-receiver` (Dienst
+`pllana-airplay-receiver.service`). Die eigene Tool-ID vermeidet den Konflikt
+mit einer früher privat installierten `mgu-airplay`, die der Store weder
+ersetzen noch entfernen kann. Beim Installieren stoppt und deaktiviert ein
+Hook den alten Dienst `mgu-airplay.service`; beim Entfernen wird er wieder
+aktiviert. Kein SSH-Befehl ist nötig.
+
+Der Dienst schreibt seinen Zustand nach `/run/pllana-airplay/status.json`
+(`waiting_for_app`, `starting`, `running`, `backend_exited` mit Code, …).
+Ist der Empfangsdienst nicht erreichbar, zeigt die App den Grund an statt
+„Empfangsdienst startet noch“.
+
+Im Store für `pllanaio/bmw-airplay` den Kanal **Releases** verwenden.
+
 ## Installation und Updates über „Releases“ (ab 0.3.0, empfohlen)
 
 Ab 0.3.0 veröffentlicht dieses Repository vollständige Store-Pakete:

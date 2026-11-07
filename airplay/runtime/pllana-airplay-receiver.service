@@ -2,11 +2,12 @@
 Description=BMW AirPlay by pllana.io receiver (Store runtime)
 After=persistency-fs.target alsaroutingadapters.service mdnsd.service mgu-uplink.service
 Wants=persistency-fs.target
+Conflicts=mgu-airplay.service
 
 [Service]
 Type=simple
-ExecStart=/usr/bin/node /var/opt/mgu-airplay/current/launch.js
-ExecStopPost=/usr/bin/node /var/opt/mgu-airplay/current/network.js remove
+ExecStart=/usr/bin/node /var/opt/pllana-airplay-receiver/current/launch.js
+ExecStopPost=/usr/bin/node /var/opt/pllana-airplay-receiver/current/network.js remove
 Restart=always
 RestartSec=2
 KillMode=control-group

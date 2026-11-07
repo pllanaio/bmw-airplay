@@ -75,7 +75,7 @@ jobs:
         run: |
           node airplay/test_audio_route.js && node airplay/test_backend.js && node airplay/test_receiver.js
           node airplay/test_frontend_lifecycle.js && node airplay/test_video_bridge.js && node airplay/test_logo_bridge.js
-          node -e "const l=require('./airplay/runtime/launch.js');if(l.parseUids('12201=store\n13007=pllana_airplay\n')!==13007)process.exit(1)"
+          node airplay/test_diagnose.js
           python3 test/test_store_contract.py
       - name: Package runtime tool and app
         run: |
@@ -89,9 +89,11 @@ jobs:
           (cd dist && sha256sum *.tgz catalog.json > SHA256SUMS && cat SHA256SUMS)
       - name: Check package contents
         run: |
-          tar -tzf dist/mgu-airplay@*.tgz | grep -qx 'files/launch.js'
-          tar -tzf dist/mgu-airplay@*.tgz | grep -qx 'units/mgu-airplay.service'
-          tar -tzf dist/mgu-airplay@*.tgz | grep -qx 'files/runtime/bin/uxplay'
+          tar -tzf dist/pllana-airplay-receiver@*.tgz | grep -qx 'files/launch.js'
+          tar -tzf dist/pllana-airplay-receiver@*.tgz | grep -qx 'units/pllana-airplay-receiver.service'
+          tar -tzf dist/pllana-airplay-receiver@*.tgz | grep -qx 'files/activate.js'
+          tar -xzOf dist/pllana-airplay-receiver@*.tgz component.json | python3 -c "import json,sys;c=json.load(sys.stdin);assert c['id']=='pllana-airplay-receiver' and c['activate']==['node','activate.js'],c"
+          tar -tzf dist/pllana-airplay-receiver@*.tgz | grep -qx 'files/runtime/bin/uxplay'
           ! tar -tzf dist/pllana_airplay@*.tgz | grep -q '^node_modules/oap-sdk/'
           tar -xzOf dist/pllana_airplay@*.tgz package.json | python3 -c "import json,sys;p=json.load(sys.stdin);assert p['mguInternet'] is True and p['mguHmi']==['ID7'],p"
       - uses: actions/upload-artifact@v4
@@ -126,8 +128,8 @@ jobs:
           else
             gh release create "v$VERSION" --repo "$REPO" --target "$GITHUB_SHA" \
               --title "BMW AirPlay by pllana.io $VERSION" \
-              --notes "Store packages: app pllana_airplay $VERSION and runtime mgu-airplay $VERSION. Add pllanaio/bmw-airplay in MGU Store and choose Releases." \
-              dist/pllana_airplay@$VERSION.tgz dist/mgu-airplay@$VERSION.tgz dist/SHA256SUMS
+              --notes "Store packages: app pllana_airplay $VERSION and receiver pllana-airplay-receiver $VERSION. Add pllanaio/bmw-airplay in MGU Store and choose Releases." \
+              dist/pllana_airplay@$VERSION.tgz dist/pllana-airplay-receiver@$VERSION.tgz dist/SHA256SUMS
             if ! gh release view catalog --repo "$REPO" > /dev/null 2>&1; then
               gh release create catalog --repo "$REPO" --target "$GITHUB_SHA" --title "BMW AirPlay Store catalog" \
                 --notes "Store catalog for pllanaio/bmw-airplay. Choose Releases in MGU Store."

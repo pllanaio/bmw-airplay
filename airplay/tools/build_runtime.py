@@ -163,7 +163,7 @@ def main():
         executable.chmod(0o755)
     (RUNTIME / 'lib/ld-linux-x86-64.so.2').chmod(0o755)
     record = {
-        'format': 'mgu-airplay-runtime-v1', 'version': '0.3.1', 'architecture': 'x86_64',
+        'format': 'mgu-airplay-runtime-v1', 'version': '0.4.0', 'architecture': 'x86_64',
         'uxplay': {'version': '1.73.7', 'revision': UX_REV},
         'mdns_client': {'version': '765.20.4', 'revision': MDNS_REV, 'daemon': 'existing MGU mdnsd'},
         'source_patch': {'file': 'lib/CMakeLists.txt', 'sha256': sha(cmake)},

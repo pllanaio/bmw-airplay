@@ -1,0 +1,16 @@
+'use strict';
+const assert = require('assert');
+const { diagnose, STATUS, RECEIVER, OLD } = require('../apps/pllana_airplay/diagnose');
+const io = files => ({ readFileSync: f => { if (!(f in files)) throw Object.assign(Error('ENOENT'), { code: 'ENOENT' }); return JSON.stringify(files[f]); } });
+const receiver = { id: 'pllana-airplay-receiver', version: '0.4.0' };
+assert(/fehlt/.test(diagnose(13001, io({}))), 'no runtime at all');
+assert(/UID 12233.*13001/.test(diagnose(13001, io({ [OLD]: { version: '0.2.4', description: 'UxPlay ... pllana_airplay UID 12233' } }))), 'old runtime bound to another UID');
+assert(/antwortet nicht/.test(diagnose(12233, io({ [OLD]: { version: '0.2.4', description: 'pllana_airplay UID 12233' } }))));
+assert(/Code 139/.test(diagnose(13001, io({ [RECEIVER]: receiver, [STATUS]: { state: 'backend_exited', uid: 13001, code: 139 } }))));
+assert(/wartet/.test(diagnose(13001, io({ [RECEIVER]: receiver, [STATUS]: { state: 'waiting_for_app' } }))));
+assert.strictEqual(diagnose(13001, io({ [RECEIVER]: receiver, [STATUS]: { state: 'running', uid: 13001 } })), '');
+assert(/12999/.test(diagnose(13001, io({ [RECEIVER]: receiver, [STATUS]: { state: 'running', uid: 12999 } }))));
+const { parseUids } = require('./runtime/launch.js');
+assert.strictEqual(parseUids('12201=store\n13007=pllana_airplay\n'), 13007);
+assert.throws(() => parseUids('13007=pllana_airplay\n13008=pllana_airplay\n'));
+console.log('Receiver diagnostics and app UID lookup passed');

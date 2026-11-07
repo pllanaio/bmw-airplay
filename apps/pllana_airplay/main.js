@@ -5,6 +5,7 @@ const { BackendClient } = require('./backend_client');
 const { VideoBridge } = require('./video_bridge');
 const { drawHome } = require('./view');
 const { LogoBridge } = require('./logo_bridge');
+const { diagnose } = require('./diagnose');
 require('./brand_logo').register(require('./kit/record').setImage);
 
 mgu.run({ async start(ctx) {
@@ -13,7 +14,9 @@ mgu.run({ async start(ctx) {
     receiver.connect();
     const video = new VideoBridge(ctx.display);
     const logo = new LogoBridge(ctx.display);
-    let state = receiver.state, notice = '', closing = false, controlsUntil = 0;
+    let state = receiver.state, notice = '', closing = false, controlsUntil = 0, diagnosis = '', diagnosedAt = 0;
+    const uid = process.getuid ? process.getuid() : 0;
+    const unreachable = () => !receiver.socket || receiver.socket.connecting || receiver.socket.destroyed;
     ctx.display.onPresentationInput = () => {
         controlsUntil = Date.now() + 8000;
         ctx.display.setPresentation(false);
@@ -25,7 +28,7 @@ mgu.run({ async start(ctx) {
     });
     ui.onClick('BTN_START', () => {
         if (!video.ready()) { notice = 'Videoausgabe noch nicht verfügbar'; return; }
-        notice = receiver.start() ? '' : 'Empfangsdienst startet noch. Bitte erneut versuchen.';
+        notice = receiver.start() ? '' : (diagnose(uid) || 'Empfangsdienst startet noch. Bitte erneut versuchen.');
     });
     ui.onClick('BTN_STOP', () => { notice = ''; receiver.stop(); });
     ui.onClick('BTN_CLOSE', async () => { closing = true; await receiver.stop(); await ui.close('MAIN'); });
@@ -63,7 +66,10 @@ mgu.run({ async start(ctx) {
             c.text(state.phase === 'loading' ? 'Video wird geladen …' : 'Bildschirmspiegelung wird fortgesetzt …',
                 size.w / 2, size.h / 2 + 32, 28, '#c0cedd', { font: 'airplay', align: 'center' });
         } else {
-            drawHome(c, state, notice, logo);
+            // While the receiver service is unreachable, say why (every 2 s).
+            if (!unreachable()) diagnosis = '';
+            else if (Date.now() - diagnosedAt > 2000) { diagnosedAt = Date.now(); diagnosis = diagnose(uid); }
+            drawHome(c, state, notice || diagnosis, logo);
         }
         if (!closing) await ui.image('MAIN_GFX', c);
     });
