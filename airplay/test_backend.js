@@ -53,6 +53,15 @@ const turn = () => new Promise(resolve=>setImmediate(resolve));
     assert(!route.owned);
     route.available=true; s.emit('data','{"command":"start"}\n'); await turn();
     assert.strictEqual(receiver.starts,1,'retry audio without replacing receiver/password');
+    // Video started from mirroring is detached from the phone once it plays.
+    receiver.detaches = 0; receiver.detach = () => { receiver.detaches++; return true; };
+    receiver.update({ returnMode: 'waiting', mode: 'hls' }); receiver.emit('media', 'hls');
+    assert(!scheduled.some(t => t.ms === 1500), 'a direct AirPlay video needs no detaching');
+    receiver.update({ returnMode: 'mirror', mode: 'hls' }); receiver.emit('media', 'hls');
+    fire(1500); assert.strictEqual(receiver.detaches, 1, 'video from mirroring is detached');
+    receiver.resumes = 0; receiver.resumeMirror = () => { receiver.resumes++; return true; };
+    s.emit('data', '{"command":"resume-mirror"}\n'); await turn(); assert.strictEqual(receiver.resumes, 1);
+    receiver.update({ returnMode: 'waiting', mode: 'waiting' });
     // Native receiver crash: automatic restart with the known password.
     receiver.crash(); await turn();
     assert.strictEqual(receiver.state.phase, 'recovering');

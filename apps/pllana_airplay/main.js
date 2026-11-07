@@ -31,6 +31,10 @@ mgu.run({ async start(ctx) {
         notice = receiver.start() ? '' : (diagnose(uid) || 'Empfangsdienst startet noch. Bitte erneut versuchen.');
     });
     ui.onClick('BTN_STOP', () => { notice = ''; receiver.stop(); });
+    ui.onClick('BTN_MIRROR', () => {
+        if (state.detached || state.mode === 'hls') { notice = ''; receiver.resumeMirror(); controlsUntil = 0; }
+        else notice = 'Kein Video aktiv – die Spiegelung läuft bereits.';
+    });
     ui.onClick('BTN_CLOSE', async () => { closing = true; await receiver.stop(); await ui.close('MAIN'); });
     // The BMW renderer owns display focus. CarPlay, a call, or Home may hide
     // this view without ending the phone's AirPlay session.

@@ -91,8 +91,8 @@ class Receiver extends EventEmitter {
         let child;
         try { child = this.spawn(launcher, args, { env, cwd: this.dataDir, detached: true, stdio: ['ignore', 'pipe', 'pipe'] }); }
         catch (e) { this.update({ phase: 'error', error: 'launch_failed', pin: '' }); return false; }
-        this.child = child;
-        this.update({ phase: 'starting', mode: 'mirror', returnMode: 'waiting', pin, file, frame: null, error: null, audioError: null, audio: audio !== 'fakesink' });
+        this.child = child; this.features = {};
+        this.update({ phase: 'starting', detached: false, mode: 'mirror', returnMode: 'waiting', pin, file, frame: null, error: null, audioError: null, audio: audio !== 'fakesink' });
         // Node 8 has no ChildProcess "spawn" event. spawn() already returns
         // a pid on success; still handle its asynchronous error event below.
         if (child.pid) this.update({ phase: 'waiting' });
@@ -144,13 +144,17 @@ class Receiver extends EventEmitter {
                 }
                 if (line === 'MGU_MODE waiting') {
                     hideOldFrame();
-                    this.update({ phase: 'waiting', mode: 'waiting', frame: null });
+                    this.update({ phase: 'waiting', mode: 'waiting', frame: null, detached: false });
                 }
                 if (line === 'MGU_MEDIA_LOADING') {
                     hideOldFrame();
                     this.update({ phase: 'loading', frame: null, error: null });
                 }
                 if (line === 'MGU_MEDIA_PLAY') this.emit('media', 'hls');
+                // Runtime 0.4.2+: detached video (see airplay/tools/patch_detach.py).
+                if (line === 'MGU_FEATURES detach') this.features.detach = true;
+                if (line === 'MGU_MEDIA_DETACHED') { this.update({ detached: true }); this.emit('diagnostic', 'video_detached_from_phone'); }
+                if (line === 'MGU_PHONE_STOP_IGNORED' || line === 'MGU_PHONE_PAUSE_IGNORED') this.emit('diagnostic', line.toLowerCase());
                 if (line === 'MGU_MEDIA_REJECTED')
                     this.update({ phase: 'waiting', frame: null, error: 'media_unsupported' });
                 if (line === 'MGU_MEDIA_FAILED') {
@@ -161,7 +165,7 @@ class Receiver extends EventEmitter {
                     const mode = line.slice(9);
                     if (mode === 'mirror') { wasMirroring = true; blockedGeneration = null; }
                     else hideOldFrame();
-                    this.update(Object.assign({ mode, returnMode: wasMirroring ? 'mirror' : 'waiting', error: null },
+                    this.update(Object.assign({ mode, returnMode: wasMirroring ? 'mirror' : 'waiting', error: null, detached: false },
                         mode === 'hls' ? { phase: 'loading', frame: null } : {}));
                     this.emit('diagnostic', 'playback_mode_' + mode);
                     this.emit('media', mode);
@@ -202,6 +206,17 @@ class Receiver extends EventEmitter {
             }
         }, 100);
         return true;
+    }
+    // A video started from screen mirroring plays on while the phone is used
+    // elsewhere. Only a runtime that announced the feature gets the signal:
+    // an older UxPlay would be terminated by SIGUSR1.
+    detach() {
+        if (!this.child || !this.features || !this.features.detach || this.state.mode !== 'hls' || this.state.detached) return false;
+        this.signal(this.child, 'SIGUSR1'); return true;
+    }
+    resumeMirror() {
+        if (!this.child || !this.features || !this.features.detach || this.state.mode !== 'hls') return false;
+        this.signal(this.child, 'SIGUSR2'); return true;
     }
     signal(child, signal) {
         if (!child || child !== this.child || !child.pid) return;
