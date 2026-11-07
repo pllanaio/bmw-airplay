@@ -134,7 +134,11 @@ static GstFlowReturn sink_frame(GstVideoSink *sink, GstBuffer *buffer) {
         guint rows = plane ? h / 2 : h, columns = plane ? w / 2 : w;
         guint8 *src = GST_VIDEO_FRAME_PLANE_DATA(&frame, plane);
         gint stride = GST_VIDEO_FRAME_PLANE_STRIDE(&frame, plane);
-        for (guint row = 0; row < rows; ++row) {
+        if ((guint)stride == columns) {
+            /* Tightly packed plane (the 1280x720 output): one copy. */
+            memcpy(dest, src, (gsize)rows * columns);
+            dest += (gsize)rows * columns;
+        } else for (guint row = 0; row < rows; ++row) {
             memcpy(dest, src + (gssize)row * stride, columns);
             dest += columns;
         }

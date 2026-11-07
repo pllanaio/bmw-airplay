@@ -42,7 +42,10 @@ mgu.run({ async start(ctx) {
     process.on('SIGTERM', () => { receiver.destroy().then(() => process.exit(0)); });
     process.on('SIGINT', () => { receiver.destroy().then(() => process.exit(0)); });
     process.on('exit', () => receiver.command('stop'));
-    ctx.loop('MAIN', 4, async () => {
+    // 10 Hz: the switch between mirroring, a YouTube video and back is
+    // picked up within ~100 ms. The video itself is drawn by the native
+    // renderer, so this only re-records a small canvas.
+    ctx.loop('MAIN', 10, async () => {
         const transitioning = state.phase === 'loading' ||
             (state.mode === 'waiting' && state.returnMode === 'mirror' && !!state.pin && !state.error);
         const fullscreen = (!!state.frame || transitioning) && Date.now() >= controlsUntil && video.ready();

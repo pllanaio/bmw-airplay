@@ -24,7 +24,9 @@ class BackendClient extends EventEmitter {
             clearInterval(this.timer); this.timer = null;
             if (this.socket === s) this.socket = null;
             this.update({ phase: 'stopped', pin: '', frame: null, file: '' });
-            if (!this.closed) this.retry = setTimeout(() => { this.retry = null; this.connect(); }, 2000);
+            // The backend keeps the receiver alive for a grace period; reconnect
+            // quickly so the running session resumes without a visible gap.
+            if (!this.closed) this.retry = setTimeout(() => { this.retry = null; this.connect(); }, 500);
         });
     }
     command(command) {

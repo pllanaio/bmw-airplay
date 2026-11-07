@@ -50,9 +50,9 @@ TimeoutStopSec=15
 MemoryAccounting=yes
 MemoryLimit=512M
 CPUAccounting=yes
-CPUQuota=150%
-CPUShares=128
-Nice=5
+CPUQuota=250%
+CPUShares=512
+Nice=0
 TasksMax=128
 OOMScoreAdjust=500
 UMask=0077
@@ -82,7 +82,7 @@ for name, proof in manifest['files'].items():
     entries.append(('runtime/' + name, data, mode))
 entries.append(('runtime/build-manifest.json', (runtime / 'build-manifest.json').read_bytes(), 0o644))
 component = {
-    'id': 'mgu-airplay', 'kind': 'tool', 'version': '0.2.4', 'title': 'Private AirPlay receiver runtime',
+    'id': 'mgu-airplay', 'kind': 'tool', 'version': '0.3.0', 'title': 'Private AirPlay receiver runtime',
     'description': 'UxPlay and SmartX audio, non-root service for pllana_airplay UID ' + str(uid),
     'internet': True, 'uids': [uid],
     'mguHmi': ['ID7'], 'files': [{'path': n, 'mode': format(m, '04o'), 'sha256': sha(b)} for n, b, m in entries],
@@ -91,7 +91,7 @@ component = {
     'restart': ['mgu-airplay.service'], 'check': ['check.sh'],
     'crashNames': ['mgu-airplay', 'uxplay', 'airplay-launch', 'airplay-backend-launch'],
 }
-artifact = ROOT / 'dist/mgu-airplay@0.2.4.tgz'
+artifact = ROOT / 'dist/mgu-airplay@0.3.0.tgz'
 with tarfile.open(artifact, 'w:gz', compresslevel=1) as archive:
     for name, data, mode in [('component.json', json.dumps(component, indent=2).encode(), 0o644),
                              ('units/mgu-airplay.service', unit, 0o644)] + [('files/' + n, b, m) for n, b, m in entries]:

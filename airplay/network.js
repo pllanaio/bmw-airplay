@@ -33,19 +33,6 @@ for (const c of before) for (const line of c.text.split('\n')) {
     const match = /# handle (\d+)\s*$/.exec(line);
     if (line.indexOf('comment "' + tag + '"') >= 0 && match) commands.push('delete rule ' + c.chain.join(' ') + ' handle ' + match[1]);
 }
-function subnet4(address, mask) {
-    const a = address.split('.').map(Number), m = mask.split('.').map(Number);
-    if (a.length !== 4 || m.length !== 4 || a.concat(m).some(n => !Number.isInteger(n) || n < 0 || n > 255)) throw Error('invalid_ipv4');
-    const bits = m.map(n => n.toString(2).padStart(8, '0')).join('');
-    if (!/^1*0*$/.test(bits)) throw Error('non_contiguous_mask');
-    return a.map((n, i) => n & m[i]).join('.');
-}
-function ipv4Prefix(a) {
-    const address = subnet4(a.address, a.netmask);
-    const length = a.netmask.split('.').map(Number).reduce((sum, n) => sum + n.toString(2).replace(/0/g, '').length, 0);
-    if (length < 16 || length > 32) throw Error('unexpected_wlan_prefix');
-    return address + '/' + length;
-}
 function ipv6Prefix(a) {
     if (a.address.indexOf(':') < 0 || !a.cidr || !a.cidr.endsWith('/64')) return null;
     const parts = a.address.split('%')[0].split('::');
@@ -73,19 +60,26 @@ if (action === 'apply') {
         fs.fchownSync(fd, uid, uid); fs.fchmodSync(fd, 0o600);
     } finally { fs.closeSync(fd); }
     if (!before.find(c => c.chain.join(' ') === 'ip filter highprioinput').present) throw Error('stock_firewall_missing');
+    // Rules match the WLAN interface plus private/link-local source ranges, not
+    // the subnet that happened to exist when the service started. Previously a
+    // service started before the iPhone hotspot was up (or with only the BMW
+    // access point present) had no rule for wlan0, and the iPhone could see
+    // the receiver but never connect until the service was restarted.
+    const PRIVATE4 = ['10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16', '169.254.0.0/16'];
+    const PRIVATE6 = ['fe80::/10', 'fc00::/7'];
     const interfaces = os.networkInterfaces();
     const networks = [];
     for (const name of ['wlan_bridge', 'wlan0']) {
+        for (const prefix of PRIVATE4) networks.push({ name, family: 'ip', prefix });
+        for (const prefix of PRIVATE6) networks.push({ name, family: 'ip6', prefix });
+        // Current global IPv6 /64 of the hotspot, when present at start.
         for (const a of interfaces[name] || []) {
-            if (a.internal) continue;
-            if (a.family === 'IPv4') networks.push({ name, family: 'ip', prefix: ipv4Prefix(a) });
-            else if (a.family === 'IPv6') {
-                const prefix = ipv6Prefix(a);
-                if (prefix) networks.push({ name, family: 'ip6', prefix });
-            }
+            if (a.internal || a.family !== 'IPv6') continue;
+            const prefix = ipv6Prefix(a);
+            if (prefix && !/^fe[89ab]|^f[cd]/i.test(prefix) && !networks.some(n => n.name === name && n.prefix === prefix))
+                networks.push({ name, family: 'ip6', prefix });
         }
     }
-    if (!networks.length) throw Error('no_local_wlan_address');
     for (const n of networks) for (const protocol of ['tcp', 'udp']) {
         for (const c of before) {
             if (!c.present || (c.chain[0] !== 'inet' && c.chain[0] !== n.family)) continue;

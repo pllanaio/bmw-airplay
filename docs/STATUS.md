@@ -17,6 +17,25 @@ Der historische Git-Tag v0.2.6 bezeichnet den ersten veröffentlichten
 Quellcode-Snapshot. Die nachträgliche Store-Anbindung und diese ausführliche
 Dokumentation stehen auf main. Der Tag wird dafür nicht nachträglich verschoben.
 
+## Änderungen in 0.3.0 (App und Laufzeit, noch nicht am Fahrzeug abgenommen)
+
+Ziel: weniger Verbindungsabbrüche, flüssigere YouTube-Wiedergabe und schnellere
+Wechsel zwischen Spiegelung und Video. Alle Punkte sind lokal getestet; die
+Abnahme am Entwicklungsfahrzeug steht aus.
+
+| Bereich | Änderung |
+| --- | --- |
+| Absturz des Empfängers | Unerwartetes Ende von UxPlay (z. B. Code 139 nach fehlgeschlagenem HLS-Abruf) startet den Empfänger automatisch neu: 1 s, 2 s, 4 s, 8 s, dann alle 15 s; nach 60 s stabilem Lauf zurückgesetzt. Das bisherige Passwort bleibt gültig, das iPhone kann sich ohne neue Code-Eingabe wieder verbinden. Ein manuelles „Verbinden“ erzeugt weiterhin einen neuen Code. |
+| App-Oberfläche getrennt | Verliert das Backend die Verbindung zur App (Neustart durch den App-Manager, blockierte Ereignisschleife), läuft die AirPlay-Sitzung 30 s weiter. Eine neu verbundene Oberfläche übernimmt sie nahtlos. „Trennen“ und „Schließen“ beenden weiterhin sofort. Heartbeat-Toleranz 12 s statt 7 s, Wiederverbindung nach 0,5 s statt 2 s. |
+| Firewall | Regeln gelten für wlan0/wlan_bridge und private bzw. Link-Local-Adressbereiche statt für das beim Dienststart zufällig vorhandene Subnetz. Vorher hatte wlan0 keine Regel, wenn der Dienst vor dem iPhone-Hotspot startete: Der Empfänger war sichtbar, aber nicht erreichbar. Der Dienststart scheitert nicht mehr ohne WLAN-Adresse. |
+| YouTube/HLS | Ein gemeinsamer Konvertier-/Skalierschritt (videoconvertscale, 2 Threads, eigener Queue-Thread) statt zwei Einzelschritten. 5 s statt 3 s Vorpuffer gegen Hotspot-Schwankungen. |
+| Dienstressourcen | CPUQuota 250 % statt 150 %, Nice 0 statt 5, CPUShares 512 statt 128. Softwaredekodierung bekam vorher nur 1,5 Kerne mit niedriger Priorität. Für die BMW-Oberfläche bleibt mindestens ein Kern frei. |
+| Wechsel Spiegelung ↔ Video | Bildwechsel werden alle 100 ms statt 250 ms erkannt, die Oberfläche läuft mit 10 statt 4 Bildern pro Sekunde. |
+| Videoausgabe | Eng gepackte Bildebenen (720p-Ausgabe) werden mit einer Kopie statt zeilenweise übertragen. |
+
+Für die native Laufzeit 0.3.0 ist ein neuer Build mit `airplay/tools/build_runtime.py`
+und eine Installation über `deploy_runtime.py` erforderlich.
+
 ## Getestete Umgebung
 
 | Bestandteil | Entwicklungsaufbau |

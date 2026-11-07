@@ -30,7 +30,7 @@ function drawHome(c, state, notice, logo) {
     else c.image(LOGO, 38, 18, 64, 64);
     text(c, 'BMW AirPlay by pllana.io', 119, 58, 24, COLORS.blue, { spacing: 1 });
     const waiting = state.phase === 'waiting', loading = state.phase === 'loading';
-    const busy = state.phase === 'starting' || state.phase === 'stopping' || loading;
+    const busy = state.phase === 'starting' || state.phase === 'stopping' || state.phase === 'recovering' || loading;
     const status = loading ? 'Video wird geladen' : waiting ? 'Empfang bereit' : state.phase === 'error' ? 'Verbindung prüfen' : busy ? 'Einen Moment …' : 'Nicht verbunden';
     c.roundRect(1274, 28, 278, 44, 22, COLORS.card);
     c.circle(1298, 50, 5, waiting ? COLORS.mint : state.phase === 'error' ? '#ffb178' : COLORS.muted);
@@ -64,7 +64,8 @@ function drawHome(c, state, notice, logo) {
     const errors = { runtime_missing: 'Empfangssoftware fehlt.', discovery_failed: 'Geräteerkennung nicht erreichbar.',
         media_unsupported: 'Dieses Video kann der Empfänger nicht abspielen.',
         media_failed: 'Video konnte nicht geladen werden. Empfang bleibt bereit.',
-        receiver_failed: 'Verbindung beendet. Bitte erneut verbinden.', backend_unavailable: 'Empfangsdienst wird verbunden …' };
+        receiver_failed: 'Verbindung beendet. Bitte erneut verbinden.', backend_unavailable: 'Empfangsdienst wird verbunden …',
+        receiver_recovering: 'Empfang wird automatisch wiederhergestellt …' };
     text(c, notice || errors[state.error] || (state.audioError ? 'Für BMW-Ton erneut „Verbinden“ wählen.' : 'Leon Pllana IT-Solutions'), 50, 490, 24,
         notice || state.error || state.audioError ? '#ffbc8e' : COLORS.muted);
     text(c, 'pllana.io', 1552, 490, 24, COLORS.blue, { align: 'right' });
