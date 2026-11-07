@@ -1,13 +1,13 @@
 {
   "snapshot_date": "2026-11-07",
-  "app_version": "0.3.0",
-  "runtime_version": "0.3.0",
+  "app_version": "0.3.1",
+  "runtime_version": "0.3.1",
   "carplay_automation": false,
   "drm_supported": false,
   "source_files": {
-    "apps/pllana_airplay/app.json": "79fa68a2461c73d07efa0a4fdc5cb6ef6727264b69aa21ae7226dc8afb90fa55",
+    "apps/pllana_airplay/app.json": "9455b944755192e007f7070545a7ebd13a7aed4cdc1990aaeffa2c82206720ed",
     "apps/pllana_airplay/audio_route.js": "4d6fa5dd861ee3b4608f8d6b89c9988aca471ef42cbdbd5b1b0d718f8d5785f3",
-    "apps/pllana_airplay/backend.js": "0a7d0c9dd5a209a75af51c76bb61b284f2ab05d511c32c52052042818ee2ea4f",
+    "apps/pllana_airplay/backend.js": "1968b236e9eea0bcbbdd3e55c51be8518d104cb5a255c3e9b305d93ff6fa6abb",
     "apps/pllana_airplay/backend_client.js": "d54cf110c715d2160ed21f1e7cf473102e2f8f34dfb27a8b6d9cf3accdd135c6",
     "apps/pllana_airplay/brand_logo.js": "eb70dce0098d7e98e17e135112e2b55e72e871009b19acdd94dd2e583a664c4e",
     "apps/pllana_airplay/icon.png": "c621d80dc40c2fbd546880fa525ea451437f4b11d90f94e0d14f863308905d85",

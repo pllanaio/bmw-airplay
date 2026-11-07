@@ -21,7 +21,9 @@ const fakeClearTimeout = t => { const i = scheduled.indexOf(t); if (i >= 0) sche
 const fire = ms => { const t = scheduled.find(x => x.ms === ms); assert(t, 'timer ' + ms + ' scheduled'); fakeClearTimeout(t); t.fn(); };
 const server = new EventEmitter();
 server.listen = (p, cb) => cb(); server.close = () => {};
-const fakeFs = {existsSync:()=>true,lstatSync:()=>({isSocket:()=>true,uid:12233}),unlinkSync:()=>{},writeFileSync:()=>{},chmodSync:()=>{}};
+let socketInode = 1, exitCode = null;
+const fakeFs = {existsSync:()=>true,lstatSync:()=>({isSocket:()=>true,uid:12233}),unlinkSync:()=>{},writeFileSync:()=>{},chmodSync:()=>{},
+    statSync:p=>({dev:1,ino:/control\.sock$/.test(p)?socketInode:7,mtime:new Date(0)})};
 const modules = {
     './resolver':{refresh:()=>{}},fs:fakeFs,path:require('path'),'./receiver':{Receiver},
     './audio_route':{AudioRoute,AUDIO_SINK:'fakesink'},'./kit/signals':{},
@@ -29,8 +31,8 @@ const modules = {
 };
 vm.runInNewContext(fs.readFileSync(require('path').join(__dirname,'../apps/pllana_airplay/backend.js'),'utf8'), {
     require:name=>{assert(modules[name],name); return modules[name];},
-    __dirname:'/app/source/javascript',Buffer,Promise,Date,JSON,Error,
-    process:{getuid:()=>12233,env:{},on:()=>{},exit:()=>{}},
+    __dirname:'/app/source/javascript',__filename:'/app/source/javascript/backend.js',Buffer,Promise,Date,JSON,Error,
+    process:{getuid:()=>12233,env:{},on:()=>{},exit:code=>{exitCode=code;}},
     setInterval:fn=>{timers.push(fn); return {unref:()=>{}};},clearInterval:()=>{},setTimeout:fakeSetTimeout,clearTimeout:fakeClearTimeout
 });
 const turn = () => new Promise(resolve=>setImmediate(resolve));
@@ -79,5 +81,9 @@ const turn = () => new Promise(resolve=>setImmediate(resolve));
     s3.emit('data','{"command":"stop"}\n'); await turn();
     assert(!receiver.child); assert(!route.owned);
     receiver.crash(); await turn(); assert(!scheduled.some(t => t.ms === 1000), 'no restart after explicit stop');
+    // App update: the package manager moved our socket away with the old home.
+    timers[1](); await turn(); assert.strictEqual(exitCode, null, 'unchanged socket keeps the backend running');
+    socketInode = 2; timers[1](); await turn(); await turn();
+    assert.strictEqual(exitCode, 75, 'a replaced app restarts the backend through systemd');
     console.log('Busy audio startup, media reacquisition, focus loss, crash recovery, frontend grace and explicit stop passed');
 })().catch(e=>{console.error(e);process.exitCode=1;});

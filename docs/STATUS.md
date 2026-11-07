@@ -17,6 +17,15 @@ Der historische Git-Tag v0.2.6 bezeichnet den ersten veröffentlichten
 Quellcode-Snapshot. Die nachträgliche Store-Anbindung und diese ausführliche
 Dokumentation stehen auf main. Der Tag wird dafür nicht nachträglich verschoben.
 
+## Änderungen in 0.3.1
+
+Nach einem App-Update über den Store verschiebt mgu-deploy das alte App-
+Verzeichnis samt Steuer-Socket. Der weiterlaufende Empfangsdienst war danach
+für die neue App unerreichbar („Empfangsdienst startet noch“). Das Backend
+erkennt jetzt einen ersetzten Socket oder ersetzten Code und beendet sich mit
+Code 75; systemd startet es mit dem neuen Code neu. Wirksam ab dem ersten
+Start des 0.3.1-Backends (danach einmalig Dienst oder Headunit neu starten).
+
 ## Änderungen in 0.3.0 (App und Laufzeit, noch nicht am Fahrzeug abgenommen)
 
 Ziel: weniger Verbindungsabbrüche, flüssigere YouTube-Wiedergabe und schnellere

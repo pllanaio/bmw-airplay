@@ -125,9 +125,21 @@ const server = net.createServer(s => {
     });
     s.on('error', () => {});
 });
-server.listen(socketPath, () => fs.chmodSync(socketPath, 0o600));
+// An app update (Store / mgu-deploy) moves the old app home, including this
+// socket, to a trash folder and installs the new code. A backend that kept
+// running would then listen on the moved socket while the new frontend finds
+// none ("Empfangsdienst startet ..."). Watch for that and restart, so the
+// service manager starts the new backend code on a fresh socket.
+const identity = p => { try { const s = fs.statSync(p); return s.dev + ':' + s.ino + ':' + s.mtime.getTime(); } catch (e) { return null; } };
+let ownCode = identity(__filename), ownSocket = null;
+server.listen(socketPath, () => { fs.chmodSync(socketPath, 0o600); ownSocket = identity(socketPath); });
 server.on('error', () => shutdown());
 const timer = setInterval(() => {
+    if (!shuttingDown && ownSocket && (identity(socketPath) !== ownSocket || identity(__filename) !== ownCode)) {
+        receiver.emit('diagnostic', 'app_updated_restarting_backend');
+        shutdown(75);
+        return;
+    }
     if (client && Date.now() - heartbeat > HEARTBEAT_TIMEOUT_MS) client.destroy();
     if (receiver.child && !checking && !shuttingDown) {
         checking = true;
@@ -142,7 +154,9 @@ const timer = setInterval(() => {
         });
     }
 }, 2000);
-function shutdown() {
+// A non-zero code (app update) makes systemd start the backend again, also
+// under the older unit's Restart=on-failure.
+function shutdown(code) {
     if (shuttingDown) return;
     shuttingDown = true; clearInterval(timer); clearTimeout(graceTimer); clearTimeout(restartTimer); clearTimeout(stableTimer);
     if (client) client.destroy();
@@ -150,9 +164,10 @@ function shutdown() {
     const hard = setTimeout(() => process.exit(1), 12000);
     enqueue(stop).then(() => {
         clearTimeout(hard);
-        try { fs.unlinkSync(socketPath); } catch (e) {}
-        process.exit(0);
+        // Never delete a socket a newer backend already created at this path.
+        try { if (identity(socketPath) === ownSocket) fs.unlinkSync(socketPath); } catch (e) {}
+        process.exit(typeof code === 'number' ? code : 0);
     });
 }
-process.on('SIGTERM', shutdown); process.on('SIGINT', shutdown);
+process.on('SIGTERM', () => shutdown()); process.on('SIGINT', () => shutdown());
 process.on('exit', () => receiver.signal(receiver.child, 'SIGTERM'));
