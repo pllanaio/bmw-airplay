@@ -2,6 +2,10 @@
 
 Native MGU/iDrive7 receiver by **Leon Pllana IT-Solutions · [pllana.io](https://pllana.io)**.
 
+This is the compact implementation note. The detailed, version-specific
+project status is in [STATUS.md](STATUS.md); the architecture, test evidence
+and Store integration are documented separately.
+
 ## Use
 
 1. Open **BMW AirPlay by pllana.io** on the MGU, select **Verbinden**.
@@ -91,7 +95,9 @@ synthetic HLS with decoded audio/video over HTTP and HTTPS. The HTTPS test
 rejects an untrusted certificate before accepting that same stream when its
 certificate is explicitly trusted.
 
-Live iPhone YouTube playback, orientation changes and full-screen photographs
-need to be verified on the installed version; local tests alone do not establish
-compatibility with every YouTube app version. DRM-protected streaming services
-are outside UxPlay's supported playback path.
+The user confirmed mirror → YouTube video → mirror, direct YouTube AirPlay,
+and direct playback while YouTube is backgrounded with native runtime 0.2.4
+after manually disconnecting CarPlay. Systematic rotation, full-screen photo,
+cross-app and cinematic-source retests remain open. The download-error recovery
+crash is unresolved. Local tests alone do not establish compatibility with every
+app version. DRM-protected services are outside the supported playback path.

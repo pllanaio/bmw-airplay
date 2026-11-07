@@ -10,5 +10,6 @@ Lizenzbedingungen. Insbesondere gelten für von UxPlay übernommene und
 abgeleitete GPL-Teile die GPL-Bedingungen; für LGPL-Dateien die jeweiligen
 Upstream-Hinweise. Siehe THIRD_PARTY_NOTICES.md und LICENSES/GPL-3.0.txt.
 
-Die mitgelieferte Ubuntu-Schrift unterliegt ausschließlich der dort
-beiliegenden Ubuntu Font Licence. Das externe BMW-OAP-SDK ist nicht enthalten.
+Die mitgelieferte Ubuntu-Schrift und die daraus erzeugten Glyphenatlanten
+unterliegen der dort beiliegenden Ubuntu Font Licence. Das externe
+BMW-OAP-SDK ist nicht enthalten.

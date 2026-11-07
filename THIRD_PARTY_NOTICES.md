@@ -24,7 +24,9 @@
   Rendering-, Uplink- und Deployment-Infrastruktur. Nicht hier gebündelt;
   die jeweiligen Upstream-Lizenzen bleiben maßgeblich.
 - **Ubuntu-Regular.ttf** — Ubuntu Font Licence 1.0. Schrift, Copyright-
-  und Lizenzdateien liegen vollständig unter assets/fonts.
+  und Lizenzdateien liegen vollständig unter assets/fonts. Der dort
+  enthaltene vorbereitete airplay.json-Glyphenatlas ist aus dieser
+  freien Schrift abgeleitet und unterliegt ebenfalls deren Bedingungen.
 
 Das App-Logo wurde für Leon Pllana IT-Solutions erstellt; Herkunft und Prompt
 sind unter airplay/branding dokumentiert. BMW und Apple/AirPlay sind Marken

@@ -35,5 +35,15 @@
     "External SDK via MGU_SDK_PATH",
     "Bundled redistributable Ubuntu font",
     "AirPlay-only documentation"
+  ],
+  "repository_updates": [
+    {
+      "date": "2026-11-07",
+      "scope": "MGU Store manifest and frontend builder; extended project-status documentation",
+      "app_and_native_sources_changed": false,
+      "store_channel": "branch:main",
+      "native_runtime_bundled": false,
+      "vehicle_deployed": false
+    }
   ]
 }

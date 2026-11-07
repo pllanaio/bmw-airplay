@@ -1,5 +1,9 @@
 # Build und Installation
 
+Diese Seite beschreibt den Workstation-Build und den individuellen
+Deployment-Pfad. Für den separaten MGU-Store-Frontend-Build siehe
+[STORE.md](STORE.md), für bestätigte Ergebnisse und Grenzen [STATUS.md](STATUS.md).
+
 ## Voraussetzungen
 
 Der native Build erfolgt unter x86-64 Linux, im Entwicklungsaufbau Debian 12
@@ -47,6 +51,10 @@ Die App-Pakete und ihr Build-Nachweis entstehen unter dist; die separate
 Laufzeit liegt unter .build/airplay/runtime. Binärdateien und generierte
 SDK-Dateien werden nicht eingecheckt.
 
+Die Workstation-Schriftgenerierung verwendet Pillow. Der Store-Build
+verwendet stattdessen den überprüften vorbereiteten Ubuntu-Schriftatlas
+unter assets/fonts und benötigt keine zusätzlichen Python-site-packages.
+
 Die synthetischen Tests ersetzen keinen iPhone-/Fahrzeugtest. Der gemeldete
 Absturz nach einem fehlgeschlagenen echten Medienabruf bleibt offen.
 
@@ -56,6 +64,8 @@ Die Deployment-Skripte verwenden vorhandenes MGU Deploy. Sie setzen die
 Store-/OAP-Struktur und einen bereits separat eingerichteten Renderer,
 WiFi-Uplink sowie OEM-SmartX/ALSA voraus. Sie installieren keinen SSH-Zugang.
 Die konkrete Firmware und Paketstruktur können Anpassungen erfordern.
+Die Runtime-Diensteinheit muss an die tatsächliche UID der installierten
+App gebunden sein; die UID einer anderen Headunit darf nicht übernommen werden.
 
 config/vehicle.example.json nach .local/vehicle.json kopieren und die eigene
 SSH-Identität sowie eine unabhängig verifizierte known_hosts-Datei angeben.

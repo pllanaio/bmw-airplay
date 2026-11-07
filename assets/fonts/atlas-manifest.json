@@ -1,0 +1,16 @@
+{
+  "atlas_sha256": "a1f1e97976b959802c50a244be88e228090875de958ea56e5d4ad88ba1faff56",
+  "font_sha256": "3128df86a31805618436d0ae5651ba4285d0c9de0a39057d025f64ee33bceb64",
+  "font": "Ubuntu-Regular.ttf",
+  "font_license": "Ubuntu Font Licence 1.0",
+  "kit_revision": "9b5e9cf8a49399939d51d3458fb29b6a3cec8346",
+  "cache_key": "de-1",
+  "sizes": [
+    18,
+    24,
+    32,
+    44,
+    64
+  ],
+  "note": "Generated from the bundled free font; no BMW font or firmware data."
+}

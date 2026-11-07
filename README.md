@@ -9,6 +9,15 @@ Ein experimenteller, nativer AirPlay-Empfänger für BMW MGU / iDrive 7 von
 Dies ist der Quellcode des auf der Entwicklungs-Headunit eingesetzten Standes.
 Keine allgemeine Hardwarefreigabe und kein offizielles BMW- oder Apple-Produkt.
 
+**Der ausführliche Entwicklungsstand steht in [docs/STATUS.md](docs/STATUS.md):**
+Fahrzeugbestätigungen, lokale Testergebnisse, noch offene Fehler,
+zurückgenommene CarPlay-Versuche und nächste Arbeitsschritte.
+
+**MGU Store:** GitHub-Quelle **pllanaio/bmw-airplay**, Kanal **branch:main**.
+Die neue [mgu-repo.json](mgu-repo.json) und der Frontend-Builder sind vorhanden.
+Die native Laufzeit 0.2.4 bleibt separat erforderlich.
+[Einrichtung und Grenzen der Store-Anbindung](docs/STORE.md).
+
 ## Funktionen und bestätigter Stand
 
 - iPhone-Bildschirmspiegelung mit Ton über die BMW-Lautsprecher.
@@ -46,8 +55,14 @@ Keine allgemeine Hardwarefreigabe und kein offizielles BMW- oder Apple-Produkt.
 
 ## Entwicklung
 
+- [Ausführlicher aktueller Stand](docs/STATUS.md)
+- [MGU-Store-Anbindung](docs/STORE.md)
 - [Build und Installation](docs/BUILD.md)
-- [Implementierung und bisherige Validierung](docs/IMPLEMENTATION.md)
+- [Architektur und Protokollpfade](docs/ARCHITECTURE.md)
+- [Tests und Aussagekraft](docs/TESTING.md)
+- [Fehlerdiagnose](docs/TROUBLESHOOTING.md)
+- [Versionsgeschichte und Entscheidungen](docs/HISTORY.md)
+- [Kompakte Implementierungsübersicht](docs/IMPLEMENTATION.md)
 - [Drittanbieter und Lizenzhinweise](THIRD_PARTY_NOTICES.md)
 - [Lizenzstatus](LICENSE.md)
 

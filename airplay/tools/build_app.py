@@ -8,8 +8,7 @@ import shutil
 import sys
 import tarfile
 import tempfile
-from patch_sdk import patch_display
-from bake_ui_fonts import bake
+from sdk_integration import configure_kit
 
 ROOT = Path(__file__).resolve().parents[2]
 settings_file = ROOT / '.local/development.json'
@@ -28,22 +27,7 @@ spec.loader.exec_module(build)
 work = Path(tempfile.mkdtemp(prefix='app-', dir=ROOT / '.build/airplay'))
 kit = work / 'kit'
 shutil.copytree(SDK / 'kit', kit)
-bake(SDK, kit / 'runtime/fonts')
-render = kit / 'runtime/renderd.js'
-text = render.read_text()
-old = 'frontGate: !!(caps & 4)'
-if text.count(old) != 1:
-    raise RuntimeError('unexpected SDK video capabilities parser')
-render.write_text(text.replace(old, old + ', video: !!(caps & 16)'))
-text = render.read_text()
-old = "['/run/mgu-renderd/renderd.sock', '/run/mgu-render/render.sock']"
-if text.count(old) != 1:
-    raise RuntimeError('unexpected SDK renderer socket preference')
-# The Store renderer uses fresh compositor layer lists; the older SDK
-# renderer can overwrite layers recently installed by CarPlay.
-render.write_text(text.replace(old, "['/run/mgu-render/render.sock', '/run/mgu-renderd/renderd.sock']"))
-display = kit / 'runtime/display.js'
-display.write_text(patch_display(display.read_text()))
+render, display = configure_kit(kit)
 build.KIT, build.SDK = str(kit), str(SDK / 'oap-sdk')
 build.APPS, build.DIST = str(ROOT / 'apps'), str(ROOT / 'dist')
 build.build('pllana_airplay')
