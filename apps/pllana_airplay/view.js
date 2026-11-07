@@ -31,7 +31,7 @@ function drawHome(c, state, notice, logo) {
     text(c, 'BMW AirPlay by pllana.io', 119, 58, 24, COLORS.blue, { spacing: 1 });
     const waiting = state.phase === 'waiting', loading = state.phase === 'loading';
     const busy = state.phase === 'starting' || state.phase === 'stopping' || state.phase === 'recovering' || loading;
-    const status = loading ? 'Video wird geladen' : waiting ? 'Empfang bereit' : state.phase === 'error' ? 'Verbindung prüfen' : busy ? 'Einen Moment …' : 'Nicht verbunden';
+    const status = state.detached ? 'Video läuft unabhängig' : loading ? 'Video wird geladen' : waiting ? 'Empfang bereit' : state.phase === 'error' ? 'Verbindung prüfen' : busy ? 'Einen Moment …' : 'Nicht verbunden';
     c.roundRect(1274, 28, 278, 44, 22, COLORS.card);
     c.circle(1298, 50, 5, waiting ? COLORS.mint : state.phase === 'error' ? '#ffb178' : COLORS.muted);
     text(c, status, 1316, 58, 22, waiting ? COLORS.mint : COLORS.muted);

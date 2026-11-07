@@ -7,6 +7,7 @@ import re
 import shutil
 import subprocess
 from patch_hls_lifecycle import patch as patch_hls_lifecycle
+from patch_detach import patch as patch_detach
 
 ROOT = Path(__file__).resolve().parents[2]
 WORK = ROOT / '.local/airplay'
@@ -74,6 +75,7 @@ def main():
         raise RuntimeError('Unexpected mirror codec callback')
     video_text = video_text.replace(anchor, anchor + '\n    g_print("MGU_MODE mirror\\n"); fflush(stdout);')
     ux_text, video_text = patch_hls_lifecycle(WORK / 'UxPlay', source, ux_text, video_text)
+    ux_text = patch_detach(ux_text)
     shutil.copy2(ROOT / 'airplay/native/mgu_direct_play.h', source / 'lib/mgu_direct_play.h')
     ux_text += '\n#include "mgu_crash_trace.h"\n'
     shutil.copy2(ROOT / 'airplay/native/mgu_crash_trace.h', source / 'mgu_crash_trace.h')
@@ -163,12 +165,13 @@ def main():
         executable.chmod(0o755)
     (RUNTIME / 'lib/ld-linux-x86-64.so.2').chmod(0o755)
     record = {
-        'format': 'mgu-airplay-runtime-v1', 'version': '0.4.1', 'architecture': 'x86_64',
+        'format': 'mgu-airplay-runtime-v1', 'version': '0.4.2', 'architecture': 'x86_64',
         'uxplay': {'version': '1.73.7', 'revision': UX_REV},
         'mdns_client': {'version': '765.20.4', 'revision': MDNS_REV, 'daemon': 'existing MGU mdnsd'},
         'source_patch': {'file': 'lib/CMakeLists.txt', 'sha256': sha(cmake)},
         'connection_events_patch_sha256': sha(ux_source),
         'hls_renderer_patch_sha256': sha(video_source),
+        'features': ['detach'],
         'hls_output_sha256': sha(ROOT / 'airplay/native/mgu_hls_output.h'),
         'crash_trace_sha256': sha(ROOT / 'airplay/native/mgu_crash_trace.h'),
         'direct_play_sha256': sha(ROOT / 'airplay/native/mgu_direct_play.h'),

@@ -17,6 +17,21 @@ Der historische Git-Tag v0.2.6 bezeichnet den ersten veröffentlichten
 Quellcode-Snapshot. Die nachträgliche Store-Anbindung und diese ausführliche
 Dokumentation stehen auf main. Der Tag wird dafür nicht nachträglich verschoben.
 
+## Änderungen in 0.4.2 – Video aus der Spiegelung vom iPhone lösen
+
+Startet während der Bildschirmspiegelung ein YouTube-/AirPlay-Video, löst
+der Empfänger es etwa 1,5 s nach Wiedergabestart vom iPhone: Stopp-, Pause-
+und Playlist-Entfernen-Anfragen, die iOS beim Verlassen der App sendet,
+werden ignoriert; das Video läuft bis zum Ende weiter, Spiegelungston ist
+währenddessen stumm. „Zur Spiegelung“ (Leiste unter dem Video) oder das
+Videoende kehren zur Spiegelung zurück. Ein direkt per AirPlay gestartetes
+Video ist unverändert. Nur Laufzeiten ab 0.4.2 melden die Fähigkeit
+(`MGU_FEATURES detach`); ältere erhalten kein Signal.
+
+Noch nicht am Fahrzeug geprüft: welche Anfragen iOS beim App-Wechsel
+während der Spiegelung tatsächlich sendet. Die Diagnose protokolliert sie
+(`mgu_phone_stop_ignored`, `mgu_phone_pause_ignored`).
+
 ## Änderungen in 0.3.1
 
 Nach einem App-Update über den Store verschiebt mgu-deploy das alte App-

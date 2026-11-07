@@ -41,6 +41,15 @@ async function ensureAudio() {
     catch (e) { receiver.update({ audio: false, audioError: 'audio_unavailable' }); }
 }
 receiver.on('media', () => enqueue(ensureAudio));
+// A video that starts while the screen is mirrored is detached from the
+// phone once it plays, so the iPhone can be used meanwhile (like a video sent
+// with AirPlay directly from the app).
+let detachTimer = null;
+receiver.on('media', mode => {
+    if (mode !== 'hls' || receiver.state.returnMode !== 'mirror' || receiver.state.detached) return;
+    clearTimeout(detachTimer);
+    detachTimer = setTimeout(() => { detachTimer = null; receiver.detach(); }, 1500);
+});
 function send(state) {
     if (client && !client.destroyed) {
         if (client.writableLength > 32768) { client.destroy(); return; }
@@ -113,6 +122,7 @@ const server = net.createServer(s => {
                 }
             });
             else if (request.command === 'stop') enqueue(stop);
+            else if (request.command === 'resume-mirror') receiver.resumeMirror();
             else if (request.command !== 'heartbeat') { s.destroy(); return; }
         }
     });

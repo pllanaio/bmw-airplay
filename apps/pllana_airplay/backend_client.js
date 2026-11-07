@@ -34,6 +34,7 @@ class BackendClient extends EventEmitter {
         this.socket.write(JSON.stringify({ command }) + '\n'); return true;
     }
     start() { return this.command('start'); }
+    resumeMirror() { return this.command('resume-mirror'); }
     stop() { this.command('stop'); return Promise.resolve(); }
     destroy() {
         this.closed = true; clearTimeout(this.retry); clearInterval(this.timer);
