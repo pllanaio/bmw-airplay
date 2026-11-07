@@ -19,7 +19,7 @@ int main(int argc, char **argv) {
     char *end = NULL;
     errno = 0;
     unsigned long number = strtoul(argv[1], &end, 10);
-    if (errno || !end || *end || number < 12203 || number > 12450) return 64;
+    if (errno || !end || *end || number < 12203 || number > 65535) return 64;
     uid_t uid = (uid_t)number;
     /* Only our descendants see uplink DNS. Preserve the unit's global resolver
        and make mounts private before binding anything. No root daemon remains. */

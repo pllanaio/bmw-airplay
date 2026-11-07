@@ -49,7 +49,7 @@ if '--install' in sys.argv:
     if result.returncode:
         raise SystemExit('cannot_read_installed_app_uid')
     uid = json.loads(result.stdout)['uid']
-    if not isinstance(uid, int) or not 12203 <= uid <= 12450:
+    if not isinstance(uid, int) or not 12203 <= uid <= 65535:
         raise SystemExit('unexpected_app_uid')
     state.update(uid=uid, status='app_installed_backend_pending')
     state_file.write_text(json.dumps(state, indent=2))

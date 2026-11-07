@@ -5,7 +5,7 @@ const cp = require('child_process'), os = require('os'), fs = require('fs'), pat
 if (process.getuid() !== 0) throw Error('root_setup_required');
 const action = process.argv[2], uid = Number(process.argv[3]);
 if (!['apply', 'remove', 'status'].includes(action)) throw Error('invalid_network_action');
-if (action === 'apply' && (!Number.isInteger(uid) || uid < 12203 || uid > 12450)) throw Error('invalid_receiver_uid');
+if (action === 'apply' && (!Number.isInteger(uid) || uid < 12203 || uid > 65535)) throw Error('invalid_receiver_uid');
 const tag = 'mgu-airplay';
 function nft(args, input) {
     const r = cp.spawnSync('/usr/sbin/nft', args, { input, encoding: 'utf8', timeout: 5000, maxBuffer: 262144 });

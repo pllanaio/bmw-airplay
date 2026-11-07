@@ -21,7 +21,7 @@ if result.returncode:
 uid = json.loads(result.stdout)['uid']
 if json.loads(result.stdout)['version'] != json.loads((ROOT / 'dist/airplay-build-provenance.json').read_text())['version']:
     raise SystemExit('installed_app_version_mismatch')
-if not isinstance(uid, int) or not 12203 <= uid <= 12450:
+if not isinstance(uid, int) or not 12203 <= uid <= 65535:
     raise SystemExit('unexpected_app_uid')
 state_file = ROOT / '.local/airplay/app-install.json'
 state = json.loads(state_file.read_text()); state.update(uid=uid, status='app_installed_backend_pending')
@@ -43,18 +43,17 @@ WorkingDirectory={home}/data
 Environment=MGU_AIRPLAY_RUNTIME=/var/opt/mgu-airplay/current/runtime
 Environment=HOME={home}/data
 NoNewPrivileges=yes
-Restart=on-failure
-RestartSec=3
+Restart=always
+RestartSec=2
 KillMode=control-group
 TimeoutStopSec=15
 MemoryAccounting=yes
-MemoryLimit=512M
+MemoryLimit=1G
 CPUAccounting=yes
-CPUQuota=250%
-CPUShares=512
-Nice=0
-TasksMax=128
-OOMScoreAdjust=500
+CPUShares=1024
+Nice=-5
+TasksMax=256
+OOMScoreAdjust=0
 UMask=0077
 
 [Install]
@@ -90,6 +89,7 @@ component = {
     'enable': [{'unit': 'mgu-airplay.service', 'target': 'multi-user.target'}],
     'restart': ['mgu-airplay.service'], 'check': ['check.sh'],
     'crashNames': ['mgu-airplay', 'uxplay', 'airplay-launch', 'airplay-backend-launch'],
+    'uninstallable': True,
 }
 artifact = ROOT / 'dist/mgu-airplay@0.3.0.tgz'
 with tarfile.open(artifact, 'w:gz', compresslevel=1) as archive:
