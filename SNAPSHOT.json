@@ -1,11 +1,11 @@
 {
   "snapshot_date": "2026-11-07",
-  "app_version": "0.4.0",
-  "runtime_version": "0.4.0",
+  "app_version": "0.4.1",
+  "runtime_version": "0.4.1",
   "carplay_automation": false,
   "drm_supported": false,
   "source_files": {
-    "apps/pllana_airplay/app.json": "aa0d4150be947c580da8f942d43b8b085641f46845fc98bf929f5671289a72c1",
+    "apps/pllana_airplay/app.json": "a9533df584f0c52847c173ad80e6034c8a9bdb692961f0bcc5f7f10e82464eef",
     "apps/pllana_airplay/audio_route.js": "4d6fa5dd861ee3b4608f8d6b89c9988aca471ef42cbdbd5b1b0d718f8d5785f3",
     "apps/pllana_airplay/backend.js": "775351ed45f1155abb44897eff0da190c0af4c6afd9d0108dd60a30653a722f0",
     "apps/pllana_airplay/backend_client.js": "d54cf110c715d2160ed21f1e7cf473102e2f8f34dfb27a8b6d9cf3accdd135c6",

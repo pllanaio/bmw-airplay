@@ -9,6 +9,12 @@ ersetzen noch entfernen kann. Beim Installieren stoppt und deaktiviert ein
 Hook den alten Dienst `mgu-airplay.service`; beim Entfernen wird er wieder
 aktiviert. Kein SSH-Befehl ist nötig.
 
+Ab 0.4.1 entfernt der Empfänger die alte Laufzeit `mgu-airplay` vollständig:
+etwa 20 s nach seinem Start ruft er einmal pro Systemstart
+`mgu-deploy.sh uninstall mgu-airplay --yes` als eigene systemd-Einheit auf
+(`pllana-airplay-legacy-removal`) und richtet danach seine Firewall-Regeln
+neu ein. Das Ergebnis steht als `legacy` in der Statusdatei.
+
 Der Dienst schreibt seinen Zustand nach `/run/pllana-airplay/status.json`
 (`waiting_for_app`, `starting`, `running`, `backend_exited` mit Code, …).
 Ist der Empfangsdienst nicht erreichbar, zeigt die App den Grund an statt
