@@ -29,7 +29,7 @@ const { BackendClient } = context.module.exports;
     assert.deepStrictEqual(socket.writes.pop(), { command: 'start', profile: 'audio' });
     assert.strictEqual(client.start('other'), false);
     assert.strictEqual(socket.writes.length, 0, 'invalid profile is never sent');
-    socket.emit('data', '{"state":{"profile":"audio","mode":"audio","supportsVideoStop":true,"connected":true}}\n');
+    socket.emit('data', '{"state":{"profile":"audio","mode":"audio","phase":"waiting","supportsVideoStop":true,"connected":true}}\n');
     assert.strictEqual(client.state.connected,true,'the backend logical session status reaches the UI');
     assert.strictEqual(client.endVideo(), false, 'video stop cannot be sent in audio-only mode');
     socket.emit('data', '{"state":{"music":{"epoch":"sender-1","controls":{"playPause":true,"next":true,"previous":true,"shuffle":true,"repeat":true},"shuffle":0,"repeat":1,"playbackState":"playing"}}}\n');
@@ -48,8 +48,26 @@ const { BackendClient } = context.module.exports;
     socket.emit('data', '{"state":{"profile":"auto","mode":"audio"}}\n');
     assert(client.musicControl('next'), 'automatic standalone audio uses the current sender controls'); socket.writes.pop();
     socket.emit('data', '{"state":{"mode":"mirror"}}\n');
-    assert.strictEqual(client.musicControl('next'), false, 'cached music capabilities cannot control a video session');
-    socket.emit('data', '{"state":{"profile":"video","mode":"hls","origin":"direct","supportsVideoStop":true}}\n');
+    assert.strictEqual(client.musicControl('next'), false, 'cached music capabilities cannot control mirroring');
+    socket.emit('data', '{"state":{"profile":"video","mode":"hls","phase":"loading","origin":"direct","supportsVideoStop":true,"music":{"epoch":"video-sender","controls":{"next":true,"previous":true,"playPause":true},"metadata":{"title":"DACP title","artist":"Phone artist","album":"Album"}}}}\n');
+    assert(client.musicControl('next'), 'a live HLS loading item can use genuine sender controls');
+    assert.deepStrictEqual(socket.writes.pop(), {command:'music-control',action:'next',epoch:'video-sender'});
+    assert.strictEqual(client.state.music.metadata.title,'DACP title');
+    socket.emit('data', '{"state":{"phase":"mirroring","frame":{"sequence":1}}}\n');
+    assert(client.musicControl('previous'), 'decoded HLS frames use the native mirroring phase');
+    assert.deepStrictEqual(socket.writes.pop(), {command:'music-control',action:'previous',epoch:'video-sender'});
+    for (const phase of ['waiting','audio','error','stopped']) {
+        socket.emit('data', JSON.stringify({state:{mode:'hls',phase}})+'\n');
+        assert.strictEqual(client.musicControl('next'),false,'a stale HLS mode cannot authorize phase '+phase);
+    }
+    socket.emit('data', '{"state":{"mode":"waiting","phase":"waiting","playlistPending":true,"returnMode":"waiting","connected":true}}\n');
+    assert(client.musicControl('next'), 'a connected direct-video playlist gap retains sender controls'); socket.writes.pop();
+    for (const fields of [{connected:false},{connected:true,returnMode:'mirror'},{returnMode:'waiting',playlistPending:false},
+        {profile:'audio',mode:'waiting',playlistPending:false},{profile:'audio',mode:'mirror',playlistPending:true}]) {
+        socket.emit('data', JSON.stringify({state:fields})+'\n');
+        assert.strictEqual(client.musicControl('next'),false,'cached capabilities require an actual controllable media state');
+    }
+    socket.emit('data', '{"state":{"profile":"video","mode":"hls","phase":"loading","origin":"direct","supportsVideoStop":true,"playlistPending":false}}\n');
     assert.strictEqual(client.state.origin, 'direct');
     assert(client.endVideo());
     assert.deepStrictEqual(socket.writes.pop(), { command: 'end-video' });
@@ -63,8 +81,11 @@ const { BackendClient } = context.module.exports;
     socket.writes.pop();
     socket.emit('data', '{"state":{"playlistPending":false,"supportsVideoStop":false}}\n');
     assert.strictEqual(client.endVideo(), false, 'an old runtime cannot get the new signal');
-    socket.emit('data', '{"state":{"mode":"audio","music":{"epoch":"sender-3","controls":{"next":true}}}}\n');
+    socket.emit('data', '{"state":{"mode":"audio","phase":"waiting","music":{"epoch":"sender-3","controls":{"next":true}}}}\n');
     assert(client.musicControl('next')); socket.writes.pop();
+    socket.emit('data', JSON.stringify({state:{music:{epoch:'sender\n3',controls:{next:true}}}})+'\n');
+    assert.strictEqual(client.musicControl('next'),false,'an invalid sender epoch cannot enter the protocol');
+    socket.emit('data', '{"state":{"music":{"epoch":"sender-3","controls":{"next":true}}}}\n');
     let acknowledged=false;
     const stopping=client.stop(); stopping.then(()=>{acknowledged=true;});
     assert.strictEqual(client.stop(), stopping, 'concurrent stop calls share one acknowledged request');

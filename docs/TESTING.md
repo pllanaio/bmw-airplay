@@ -206,3 +206,35 @@ Bedienung und passende Touch-/iDrive-Koordinaten.
 
 Die iPhone-/Fahrzeugmatrix für Stop, beide Videomodi, reines Audio und die
 neue Bildfüllung steht in [MEDIA_MODES.md](MEDIA_MODES.md).
+
+
+## Zusätzliche Prüfungen für 0.4.7
+
+`node airplay/test_network.js` prüft aktive WLAN-Leases, exakte Socket-UIDs
+für BMWs vorhandenen mDNS-Dienst, eng begrenzte Bonjour-Regeln, Konflikte
+und Wiederherstellung ausschließlich eigener Routingregeln.
+
+`python3 airplay/test_mdns_route.py` kompiliert den statischen Netlink-Helfer
+und prüft echte Kernelregeln in einem **neuen isolierten Netzwerk-Namespace**.
+Darin werden BMW-AP und Hotspot nachgebildet: richtige Schnittstelle und
+Quelladresse zum Hotspot, unveränderte Internet-/BMW-AP-Routen, keine Wirkung
+auf andere UIDs, unterdrückte Default-Route in Tabelle 110 sowie Erhalt
+fremder Regeln beim Aufräumen. Voraussetzung sind gcc, iproute2 und erlaubte
+Netzwerk-Namespaces. `--binary` prüft ein bereits gebautes Exemplar.
+
+Die CI führt in eingeschränkten Containern `--cli-only` aus. Das prüft
+Argumentgrenzen und den Aufrufvertrag; es ersetzt **keinen** Kernel-Routingtest.
+Der vollständige Namespace-Test muss separat ausgeführt werden.
+
+Die nativen DACP-Sitzungstests prüfen die Erhaltung der Senderautorisierung
+nur während gültiger Video-/Playlist-Sitzungen, Eigentümerwechsel und
+Löschung bei Stop/Fehler/Disconnect. JavaScript-Tests schicken echte
+`nextitem`-/`previtem`-HTTP-Anfragen an einen lokalen Testsender und prüfen
+optionale Titel-/Interpret-/Album-Metadaten. Backend-/Client-Tests verbieten
+Befehle aus alten Sitzungen, Spiegelung und während des Trennens.
+
+`test_bmw_media.js` und `test_carplay_focus.js` prüfen nur die statische
+Schnittstellendiagnose mit künstlichen Schemas. Sie lesen keine Fahrzeugwerte
+und bestätigen weder CarPlay-Fokus noch Lenkrad- oder Tacho-Funktion.
+Für diese Funktionen fehlen weiterhin bestätigte BMW-Verträge und reale
+Fahrzeugtests. Der SDK-freie UI-/Renderer-Test simuliert diese Dienste nicht.

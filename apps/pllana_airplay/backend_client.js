@@ -4,6 +4,12 @@ function validVideoViewport(width, height) {
     return Number.isInteger(width) && Number.isInteger(height) && width >= 16 && height >= 16 &&
         width <= 2048 && height <= 2048 && !(width & 1) && !(height & 1) && width * height <= 2048 * 1080;
 }
+function controllableMedia(state) {
+    return (state.mode === 'audio' && (state.phase === 'audio' || state.phase === 'waiting')) ||
+        (state.mode === 'hls' && (state.phase === 'loading' || state.phase === 'mirroring')) ||
+        (state.mode === 'waiting' && state.phase === 'waiting' && state.connected === true &&
+            state.playlistPending === true && state.returnMode === 'waiting');
+}
 class BackendClient extends EventEmitter {
     constructor(socketPath) {
         super(); this.path = socketPath; this.socket = null; this.retry = null; this.timer = null; this.closed = false;
@@ -88,8 +94,8 @@ class BackendClient extends EventEmitter {
     }
     musicControl(action, value) {
         const music = this.state.music;
-        if (this.stopRequest || this.state.phase === 'stopping' || (this.state.mode !== 'audio' && this.state.profile !== 'audio') || !music || !music.controls || music.controls[action] !== true ||
-            typeof music.epoch !== 'string' || !music.epoch || music.epoch.length > 128) return false;
+        if (this.stopRequest || this.state.phase === 'stopping' || !controllableMedia(this.state) || !music || !music.controls || music.controls[action] !== true ||
+            typeof music.epoch !== 'string' || !music.epoch || music.epoch.length > 128 || /[\x00-\x1f\x7f]/.test(music.epoch)) return false;
         const transport = action === 'playPause' || action === 'next' || action === 'previous';
         if (!(transport && (value === undefined || value === null)) &&
             !(action === 'shuffle' && (value === 0 || value === 1)) &&
