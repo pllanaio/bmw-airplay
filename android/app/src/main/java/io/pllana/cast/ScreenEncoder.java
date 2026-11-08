@@ -63,6 +63,7 @@ final class ScreenEncoder {
         display = projection.createVirtualDisplay("pllana Cast", width, height, densityDpi,
                 DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR, surface, null, null);
         startDrain();
+        kickFirstFrame();
     }
 
     synchronized void resize(int sourceWidth, int sourceHeight) {
@@ -78,6 +79,7 @@ final class ScreenEncoder {
             display.resize(width, height, densityDpi);
             display.setSurface(surface);
             startDrain();
+            kickFirstFrame();
         } catch (IOException | RuntimeException e) {
             CastLog.error("Encoder-Neustart", e);
             connection.close("encoder");
@@ -151,6 +153,26 @@ final class ScreenEncoder {
             }
             current.releaseOutputBuffer(index, false);
         }
+    }
+
+    /**
+     * A still screen may produce no frame for seconds. Until the first one is
+     * encoded, re-attach the surface (forces a composition) and ask for a key
+     * frame every 300 ms.
+     */
+    private void kickFirstFrame() {
+        final long before = encoded;
+        new Thread(() -> {
+            for (int i = 0; i < 20 && running && encoded == before; i++) {
+                try { Thread.sleep(300); } catch (InterruptedException e) { return; }
+                synchronized (ScreenEncoder.this) {
+                    if (!running || encoded != before || display == null || surface == null) break;
+                    display.setSurface(null);
+                    display.setSurface(surface);
+                }
+                requestKeyFrame();
+            }
+        }, "pllana-cast-kick").start();
     }
 
     /** Asks the encoder for an immediate key frame (after dropped frames). */

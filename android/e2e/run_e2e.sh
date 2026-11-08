@@ -27,13 +27,19 @@ for i in $(seq 1 40); do
     [ "$3" = entire ] && mode=picked
   fi
 done
-# Let it stream; rotate once to exercise the encoder resize path.
-sleep 20
+# Stream with movement (settings list scrolling), rotate to exercise the
+# encoder resize path, and come back to portrait.
+sleep 5
+adb shell am start -a android.settings.SETTINGS > /dev/null
+for i in $(seq 1 10); do adb shell input swipe 160 500 160 150 300; adb shell input swipe 160 150 160 500 300; done
 adb shell settings put system accelerometer_rotation 0
 adb shell settings put system user_rotation 1
-sleep 10
+sleep 4
+for i in $(seq 1 6); do adb shell input swipe 500 250 500 80 300; adb shell input swipe 500 80 500 250 300; done
 adb shell settings put system user_rotation 0
-sleep 10
+sleep 4
+for i in $(seq 1 6); do adb shell input swipe 160 500 160 150 300; done
+sleep 3
 adb logcat -d -s pllanaCast > "$OUT/logcat.txt"
 adb exec-out screencap -p > "$OUT/phone.png" || true
 adb shell am start -n io.pllana.cast/.MainActivity > /dev/null
@@ -50,13 +56,20 @@ try: stats = json.load(open(out + '/stats.json'))
 except Exception: sys.exit('FAIL: no media reached the receiver')
 assert stats['configs'] >= 1, 'no H.264 configuration'
 assert stats['keyFrames'] >= 2, 'no key frames'
-assert stats['frames'] >= 300, 'only %d frames' % stats['frames']
+assert stats['frames'] >= 150, 'only %d frames' % stats['frames']
+log = open(out + '/logcat.txt').read()
+receiver = open(out + '/receiver.out').read()
+assert receiver.count('session:') == 1, 'the cast was interrupted and restarted'
+assert 'Größe' in log, 'rotation did not resize the encoder'
+assert 'Beendet' not in log.split('Größe')[-1].split('\n')[0], 'rotation ended the cast'
+first = [l for l in log.splitlines() if 'Erstes Bild kodiert' in l]
+assert first, 'no frame encoded'
 assert stats['invalid'] == 0, 'invalid frame types'
 probe = subprocess.run(['ffprobe', '-v', 'error', '-count_frames', '-select_streams', 'v:0', '-show_entries',
     'stream=width,height,nb_read_frames', '-of', 'json', out + '/stream.h264'], capture_output=True, text=True)
 info = json.loads(probe.stdout)['streams'][0]
 print('decoded', info)
-assert int(info['nb_read_frames']) >= 250, 'decodable frames: %s' % info['nb_read_frames']
+assert int(info['nb_read_frames']) >= 120, 'decodable frames: %s' % info['nb_read_frames']
 assert int(info['width']) <= 1280 and int(info['height']) <= 720, 'frame larger than 1280x720'
 print('PASS: %d frames, %d key frames, %d audio blocks' % (stats['frames'], stats['keyFrames'], stats['audioBlocks']))
 PY

@@ -124,7 +124,7 @@ public final class MainActivity extends Activity implements CastService.StatusLi
         setContentView(scroll);
         // Test hook (also handy via adb): prefilled address/code, optional autostart.
         Intent launch = getIntent();
-        if (launch != null && launch.hasExtra("host")) {
+        if (state == null && launch != null && launch.hasExtra("host")) {
             host.setText(launch.getStringExtra("host"));
             if (launch.hasExtra("code")) code.setText(launch.getStringExtra("code"));
             if (launch.hasExtra("sound")) sound.setChecked(launch.getBooleanExtra("sound", true));
