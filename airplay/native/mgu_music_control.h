@@ -32,7 +32,9 @@ static void mgu_music_control(void *, void *owner, const unsigned char *remote,
     struct stat st;
     if (fstat(dir, &st) || st.st_uid != getuid() || (st.st_mode & 077) != 0) { close(dir); return; }
     if (!token) {
-        if (owner == mgu_control_owner) {
+        /* NULL owner is an explicit reset after a verified, successfully
+         * selected SETUP96. Older connections always pass their own owner. */
+        if (!owner || owner == mgu_control_owner) {
             unlinkat(dir, "control.json", 0);
             mgu_control_owner = NULL;
         }

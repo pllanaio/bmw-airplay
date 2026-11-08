@@ -57,8 +57,8 @@ function drawMusic(c, state, artwork, onControl) {
         c.circle(155, 297, 16, COLORS.blue); c.circle(205, 284, 16, COLORS.blue);
     }
     text(c, fit(c, music.title || 'Deine Musik.', 45, 1158, 46), 394, 171, 45, COLORS.ink, { literal: true });
-    text(c, fit(c, music.artist || (state.pin ? 'AirPlay-Audio am iPhone wählen' : 'Unten „Verbinden“ drücken.'), 29, 1155, 67), 397, 224, 29, COLORS.muted, { literal: true });
-    text(c, fit(c, music.album || (state.pin && !music.title ? 'BMW AirPlay by pllana.io · Code ' + state.pin : ''), 25, 1155, 76), 397, 266, 25, COLORS.muted, { literal: true });
+    text(c, fit(c, music.artist || (state.connected ? 'Musik am iPhone auswählen' : state.pin ? 'AirPlay-Audio am iPhone wählen' : 'Unten „Verbinden“ drücken.'), 29, 1155, 67), 397, 224, 29, COLORS.muted, { literal: true });
+    text(c, fit(c, music.album || (state.connected ? 'AirPlay-Audio verbunden' : state.pin && !music.title ? 'BMW AirPlay by pllana.io · Code ' + state.pin : ''), 25, 1155, 76), 397, 266, 25, COLORS.muted, { literal: true });
     musicButton(c, 394, 152, 'Zurück', 'previous', controls.previous, false, onControl);
     musicButton(c, 560, 194, music.playbackState === 'playing' ? 'Pause' : music.playbackState === 'paused' || music.playbackState === 'stopped' ? 'Abspielen' : 'Play / Pause', 'playPause', controls.playPause, false, onControl);
     musicButton(c, 768, 152, 'Weiter', 'next', controls.next, false, onControl);
@@ -68,6 +68,29 @@ function drawMusic(c, state, artwork, onControl) {
     text(c, available === 5 ? 'Wiedergabe über dein iPhone. Ton über deinen BMW.' : available ? 'Weitere Funktionen kannst du am iPhone steuern.' : 'Wiedergabe am iPhone starten. Steuerung wird vom Sender freigegeben.', 397, 437, 23, COLORS.muted);
 }
 function drawHome(c, state, notice, logo, artwork, onControl) {
+    const original = c, sy = Math.min(1, (c.h || 520) / 520);
+    if (sy < 1) {
+        // A short display has a smaller borderless body above the controls.
+        // Compress the home/music layout too, rather than clipping its rows.
+        const sized = (name, transform) => (...args) => original[name].apply(original, transform(args));
+        const box = args => { args[1] *= sy; args[3] *= sy; return args; };
+        c = {
+            clear: color => original.clear(color),
+            gradientRect: sized('gradientRect', box), fillRect: sized('fillRect', box),
+            card: sized('card', args => { box(args); args[4] *= sy; return args; }),
+            roundRect: sized('roundRect', args => { box(args); args[4] *= sy; return args; }),
+            strokeRoundRect: sized('strokeRoundRect', args => { box(args); args[4] *= sy; args[5] *= sy; return args; }),
+            line: sized('line', args => { args[1] *= sy; args[3] *= sy; args[4] *= sy; return args; }),
+            circle: sized('circle', args => { args[1] *= sy; args[2] *= sy; return args; }),
+            quad: (points, color) => original.quad(points.map(point => [point[0], point[1] * sy]), color),
+            image: sized('image', args => { args[2] *= sy; args[4] *= sy; return args; }),
+            text: sized('text', args => { args[2] *= sy; args[3] *= sy; return args; }),
+        };
+        if (original.target) c.target = sized('target', args => { box(args); if (args[6] !== undefined) args[6] *= sy; return args; });
+        if (original.textWidth) c.textWidth = sized('textWidth', args => { args[1] *= sy; return args; });
+        const imageBridge = bridge => bridge && { draw: (canvas, x, y, w, h) => bridge.draw(original, x, y * sy, w, h * sy) };
+        logo = imageBridge(logo); artwork = imageBridge(artwork);
+    }
     c.clear(COLORS.bg);
     c.gradientRect(0, 0, 1600, 520, [[0, '#111d2c'], [0.68, COLORS.bg], [1, '#0b141d']]);
     if (logo) logo.draw(c, 38, 18, 64, 64);
@@ -76,10 +99,11 @@ function drawHome(c, state, notice, logo, artwork, onControl) {
     const audioOnly = state.mode === 'audio' || state.profile === 'audio', audioPlaying = state.phase === 'audio';
     const waiting = state.phase === 'waiting', loading = state.phase === 'loading';
     const busy = state.phase === 'starting' || state.phase === 'stopping' || state.phase === 'recovering' || loading;
-    const status = audioOnly && state.music && state.music.playbackState === 'paused' ? 'Musik pausiert' : audioPlaying ? 'Musik läuft' : state.playlistPending ? 'Wartet auf YouTube' : state.detached ? 'Video läuft unabhängig' : loading ? 'Video wird geladen' : waiting ? (audioOnly ? 'Audio bereit' : 'Empfang bereit') : state.phase === 'error' ? 'Verbindung prüfen' : busy ? 'Einen Moment …' : 'Nicht verbunden';
+    const connected = state.connected === true;
+    const status = state.phase === 'stopping' ? 'Wird getrennt …' : connected ? 'Mit iPhone verbunden' : state.phase === 'error' ? 'Verbindung prüfen' : busy ? 'Einen Moment …' : waiting ? 'Empfang bereit' : 'Nicht verbunden';
     c.roundRect(1274, 28, 278, 44, 22, COLORS.card);
-    c.circle(1298, 50, 5, waiting || audioPlaying ? COLORS.mint : state.phase === 'error' ? '#ffb178' : COLORS.muted);
-    text(c, status, 1316, 58, 22, waiting || audioPlaying ? COLORS.mint : COLORS.muted);
+    c.circle(1298, 50, 5, connected ? COLORS.mint : state.phase === 'error' ? '#ffb178' : COLORS.muted);
+    text(c, status, 1316, 58, 22, connected ? COLORS.mint : COLORS.muted);
 
     if (audioOnly) drawMusic(c, state, artwork, onControl);
     else {
@@ -91,8 +115,14 @@ function drawHome(c, state, notice, logo, artwork, onControl) {
 
     c.card(1054, 100, 498, 341, 26, [[0, '#1b2e43'], [1, '#101b29']]);
     c.strokeRoundRect(1054, 100, 498, 341, 26, 1, '#30475e');
-    text(c, state.pin ? 'BMW AirPlay by pllana.io' : 'Bereit, wenn du es bist.', 1084, 151, 29, COLORS.ink);
-    if (state.pin) {
+    text(c, connected ? 'Dein iPhone ist verbunden.' : state.pin ? 'BMW AirPlay by pllana.io' : 'Bereit, wenn du es bist.', 1084, 151, 29, COLORS.ink);
+    if (connected) {
+        const media = state.mode === 'hls' ? (loading ? 'Video wird geladen …' : 'Video läuft') : state.mode === 'mirror' && state.frame ? 'Bildschirmspiegelung aktiv' : 'Wartet auf Musik oder Video';
+        text(c, media, 1084, 194, 25, COLORS.mint);
+        airplay(c, 1258, 225, 90, COLORS.mint);
+        text(c, 'AirPlay bleibt verbunden.', 1303, 356, 25, COLORS.ink, { align: 'center' });
+        text(c, 'Musik oder Video am iPhone starten.', 1303, 395, 22, COLORS.muted, { align: 'center' });
+    } else if (state.pin) {
         text(c, audioOnly ? 'Am iPhone als Audioausgabe wählen' : 'Am iPhone wählen und Code eingeben', 1084, 192, 23, COLORS.muted);
         const code = String(state.pin);
         const gap = 10, cell = Math.min(62, (438 - (code.length - 1) * gap) / code.length);
@@ -114,13 +144,14 @@ function drawHome(c, state, notice, logo, artwork, onControl) {
         media_failed: 'Video konnte nicht geladen werden. Empfang bleibt bereit.',
         receiver_failed: 'Verbindung beendet. Bitte erneut verbinden.', backend_unavailable: 'Empfangsdienst wird verbunden …',
         disconnect_failed: 'AirPlay konnte nicht vollständig getrennt werden. Erneut „Trennen“ wählen.',
+        video_viewport_failed: 'Videoausgabe konnte nicht angepasst werden. Erneut „Verbinden“ wählen.',
         receiver_recovering: 'Empfang wird automatisch wiederhergestellt …',
         music_control_failed: 'Musiksteuerung nicht erreichbar. Am iPhone weiter steuern.' };
     const controlErrors = { music_control_failed: 'Musiksteuerung nicht erreichbar. Am iPhone weiter steuern.',
         music_control_busy: 'Musiksteuerung beschäftigt. Kurz warten.', music_control_stale: 'Musikverbindung wird aktualisiert.' };
     const controlError = audioOnly && state.music && controlErrors[state.music.controlError];
-    text(c, notice || errors[state.error] || controlError || (state.audioError ? 'Für BMW-Ton erneut „Verbinden“ wählen.' : 'Leon Pllana IT-Solutions'), 50, 490, 24,
-        notice || state.error || state.audioError || controlError ? '#ffbc8e' : COLORS.muted);
+    text(c, notice || errors[state.viewportError] || errors[state.error] || controlError || (state.audioError ? 'Für BMW-Ton erneut „Verbinden“ wählen.' : 'Leon Pllana IT-Solutions'), 50, 490, 24,
+        notice || state.viewportError || state.error || state.audioError || controlError ? '#ffbc8e' : COLORS.muted);
     text(c, 'pllana.io', 1552, 490, 24, COLORS.blue, { align: 'right' });
 }
 module.exports = { drawHome };

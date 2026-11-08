@@ -14,13 +14,14 @@ def patch(upstream, source, ux, video):
 static gint mgu_hls_owner = 0;
 static gint mgu_hls_stop_requested = 0;
 static gint mgu_hls_desired_play = 1;
+static gint mgu_hls_buffering_seen = 0;
 static gboolean mgu_hls_play_requested = FALSE;
 static float mgu_hls_start_fraction = 0.0f;
 bool video_renderer_is_hls_active(void) { return g_atomic_int_get(&mgu_hls_owner) == 1; }
-void video_renderer_begin_hls_transition(void) { g_atomic_int_set(&mgu_hls_stop_requested, 0); g_atomic_int_set(&mgu_hls_desired_play, 1); g_atomic_int_set(&mgu_hls_owner, 1); }
+void video_renderer_begin_hls_transition(void) { g_atomic_int_set(&mgu_hls_stop_requested, 0); g_atomic_int_set(&mgu_hls_desired_play, 1); g_atomic_int_set(&mgu_hls_buffering_seen, 0); g_atomic_int_set(&mgu_hls_owner, 1); }
 ''')
     video = once(video, '    hls_video = (uri != NULL);',
-                 '    g_atomic_int_set(&mgu_hls_owner, uri ? 1 : 2);\n    mgu_hls_play_requested = (uri != NULL && g_atomic_int_get(&mgu_hls_desired_play));\n    hls_video = (uri != NULL);')
+                 '    g_atomic_int_set(&mgu_hls_owner, uri ? 1 : 2);\n    g_atomic_int_set(&mgu_hls_buffering_seen, 0);\n    mgu_hls_play_requested = (uri != NULL && g_atomic_int_get(&mgu_hls_desired_play));\n    hls_video = (uri != NULL);')
     video = once(video, '    hls_buffer_empty = TRUE;\n    hls_buffer_empty = FALSE;',
                  '    hls_buffer_empty = TRUE;\n    hls_buffer_full = FALSE;')
     video = once(video, 'void video_renderer_pause() {',
@@ -65,6 +66,25 @@ void video_renderer_begin_hls_transition(void) { g_atomic_int_set(&mgu_hls_stop_
             renderer->buffering_level = CLAMP(percent, 0, 100);
             gst_element_set_state(renderer->pipeline,
                 hls_buffer_full && mgu_hls_play_requested ? GST_STATE_PLAYING : GST_STATE_PAUSED);''')
+    anchor = '''    case GST_MESSAGE_BUFFERING:
+        if (hls_video) {'''
+    video = once(video, anchor, anchor + '\n            g_atomic_int_set(&mgu_hls_buffering_seen, 1);')
+    anchor = '    case GST_MESSAGE_ERROR: {'
+    video = once(video, anchor, '''    case GST_MESSAGE_ASYNC_DONE:
+        /* Local files and some playbin inputs never emit BUFFERING. A fully
+         * prerolled current pipeline is ready, including while explicitly
+         * paused, so a later /rate=1 can resume it. Real BUFFERING remains
+         * authoritative once observed, even if its first percentage is 0. */
+        if (hls_video && GST_MESSAGE_SRC(message) == GST_OBJECT(renderer->pipeline) &&
+            !g_atomic_int_get(&mgu_hls_buffering_seen) && !g_atomic_int_get(&mgu_hls_stop_requested) &&
+            g_atomic_int_get(&mgu_hls_pipeline_generation) == g_atomic_int_get(&mgu_hls_generation)) {
+            hls_buffer_empty = FALSE;
+            hls_buffer_full = TRUE;
+            renderer->buffering_level = 100;
+            if (mgu_hls_play_requested) gst_element_set_state(renderer->pipeline, GST_STATE_PLAYING);
+        }
+        break;
+''' + anchor)
     # Keep mirror packets blocked until start() has finished iterating over all
     # renderers. A packet choosing a codec earlier destroys the unused renderer
     # while start() is still about to access it.

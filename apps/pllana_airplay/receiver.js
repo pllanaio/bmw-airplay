@@ -6,6 +6,42 @@ const fs = require('fs');
 const path = require('path');
 const { AudioMetadata } = require('./audio_metadata');
 
+function validVideoViewport(width, height) {
+    return Number.isInteger(width) && Number.isInteger(height) && width >= 16 && height >= 16 &&
+        width <= 2048 && height <= 2048 && !(width & 1) && !(height & 1) && width * height <= 2048 * 1080;
+}
+
+function writeVideoViewport(directory, file, viewport) {
+    const uid = process.getuid ? process.getuid() : 0;
+    const parent = fs.lstatSync(directory);
+    if (!parent.isDirectory() || parent.isSymbolicLink() || parent.uid !== uid || (parent.mode & 0o077)) throw Error('invalid_viewport_directory');
+    try {
+        const current = fs.lstatSync(file);
+        if (!current.isFile() || current.isSymbolicLink() || current.nlink !== 1 || current.uid !== uid || (current.mode & 0o777) !== 0o600)
+            throw Error('invalid_viewport_file');
+    } catch (e) { if (e.code !== 'ENOENT') throw e; }
+    const bytes = Buffer.alloc(8);
+    bytes.writeUInt32LE(viewport.width, 0); bytes.writeUInt32LE(viewport.height, 4);
+    const temporary = file + '.tmp-' + crypto.randomBytes(8).toString('hex');
+    let fd = null, created = false;
+    try {
+        fd = fs.openSync(temporary, fs.constants.O_WRONLY | fs.constants.O_CREAT | fs.constants.O_EXCL | (fs.constants.O_NOFOLLOW || 0), 0o600);
+        created = true; fs.fchmodSync(fd, 0o600); fs.writeFileSync(fd, bytes);
+        fs.closeSync(fd); fd = null; fs.renameSync(temporary, file); created = false;
+    } finally {
+        if (fd !== null) fs.closeSync(fd);
+        if (created) try { fs.unlinkSync(temporary); } catch (e) {}
+    }
+}
+
+function removeVideoViewport(file) {
+    if (!file) return;
+    try {
+        const stat = fs.lstatSync(file), uid = process.getuid ? process.getuid() : 0;
+        if (stat.isFile() && !stat.isSymbolicLink() && stat.nlink === 1 && stat.uid === uid) fs.unlinkSync(file);
+    } catch (e) {}
+}
+
 function emptyMusic() {
     return { epoch: null, title: '', artist: '', album: '', artwork: null, playbackState: 'unknown', shuffle: null, repeat: null,
         controls: { playPause: false, next: false, previous: false, shuffle: false, repeat: false } };
@@ -52,9 +88,27 @@ class Receiver extends EventEmitter {
         this.child = null; this.stopTimer = null; this.stopFailTimer = null; this.poll = null; this.session = 0;
         this.stopPromise = null; this.closed = false; this.stoppingChild = null; this.closedChild = null;
         this.musicDirectory = ''; this.musicPoll = null;
-        this.state = { phase: 'stopped', profile: 'auto', mode: null, origin: null, supportsVideoStop: false, supportsAutomaticMedia: false, playlistPending: false, music: null, pin: '', frame: null, file: '', audio: false, error: null };
+        this.videoViewport = { width: 1920, height: 720 }; this.viewportFile = ''; this.viewportApplied = '';
+        this.state = { phase: 'stopped', profile: 'auto', mode: null, connected: false, supportsSessionStatus: false, origin: null, supportsVideoStop: false, supportsAutomaticMedia: false, playlistPending: false, music: null, pin: '', frame: null, file: '', audio: false, error: null };
     }
     update(fields) { Object.assign(this.state, fields); this.emit('state', Object.assign({}, this.state)); }
+    setVideoViewport(width, height) {
+        if (!validVideoViewport(width, height) || this.closed || this.stopPromise || this.stoppingChild) return false;
+        this.videoViewport = { width, height };
+        const key = width + ':' + height;
+        if (this.viewportFile && this.child && this.state.profile !== 'audio' && this.viewportApplied !== key) {
+            try {
+                writeVideoViewport(this.dataDir, this.viewportFile, this.videoViewport);
+                this.viewportApplied = key;
+            } catch (e) {
+                this.update({ viewportError: 'video_viewport_failed', error: this.state.error || 'video_viewport_failed' });
+                this.emit('diagnostic', 'video_viewport_failed'); return false;
+            }
+        }
+        const fields = { videoViewport: this.videoViewport, viewportError: null };
+        if (this.state.error === 'video_viewport_failed') fields.error = null;
+        this.update(fields); return true;
+    }
     // options.keepPassword: an automatic restart after a receiver failure keeps
     // the password the iPhone already knows, so it can reconnect at once.
     start(options) {
@@ -65,6 +119,11 @@ class Receiver extends EventEmitter {
         if (profile !== 'auto' && profile !== 'video' && profile !== 'audio') {
             this.update({ phase: 'error', error: 'invalid_profile', pin: '' }); return false;
         }
+        const viewport = options && options.viewport;
+        if (viewport !== undefined && (!viewport || !validVideoViewport(viewport.width, viewport.height))) {
+            this.update({ phase: 'error', error: 'invalid_video_viewport', pin: '' }); return false;
+        }
+        if (viewport) this.videoViewport = { width: viewport.width, height: viewport.height };
         const launcher = path.join(this.runtime, 'bin/airplay-launch');
         const loader = path.join(this.runtime, 'lib/ld-linux-x86-64.so.2');
         const uxplay = path.join(this.runtime, 'bin/uxplay');
@@ -122,6 +181,16 @@ class Receiver extends EventEmitter {
             MGU_AUDIO_ONLY: profile === 'audio' ? '1' : '0',
             MGU_AUTO_MEDIA: profile === 'auto' ? '1' : '0',
         });
+        const viewportFile = profile !== 'audio' ? path.join(this.dataDir, 'video-viewport-' + process.pid + '-' + crypto.randomBytes(8).toString('hex')) : '';
+        let viewportError = null;
+        this.viewportApplied = '';
+        if (viewportFile) {
+            env.MGU_HLS_VIEWPORT_FILE = viewportFile;
+            try {
+                writeVideoViewport(this.dataDir, viewportFile, this.videoViewport);
+                this.viewportApplied = this.videoViewport.width + ':' + this.videoViewport.height;
+            } catch (e) { viewportError = 'video_viewport_failed'; this.emit('diagnostic', viewportError); }
+        } else delete env.MGU_HLS_VIEWPORT_FILE;
         let metadata = null, metadataEnv = null;
         if (profile !== 'video') {
             try {
@@ -137,10 +206,11 @@ class Receiver extends EventEmitter {
         // pairing keys live only in the app's private data directory.
         let child;
         try { child = this.spawn(launcher, args, { env, cwd: this.dataDir, detached: true, stdio: ['ignore', 'pipe', 'pipe'] }); }
-        catch (e) { if (metadata) metadata.close(); this.update({ phase: 'error', error: 'launch_failed', pin: '' }); return false; }
+        catch (e) { if (metadata) metadata.close(); removeVideoViewport(viewportFile); this.update({ phase: 'error', error: 'launch_failed', pin: '' }); return false; }
         this.child = child; this.closedChild = null; this.features = {};
+        this.viewportFile = viewportFile;
         this.musicDirectory = metadataEnv && metadataEnv.MGU_MUSIC_DIR || '';
-        this.update({ phase: 'starting', profile, directVideo, origin: null, supportsVideoStop: false, supportsAutomaticMedia: false, detached: false, playlistPending: false, music: profile !== 'video' ? emptyMusic() : null, mode: profile === 'audio' ? 'audio' : 'waiting', returnMode: 'waiting', pin, file, frame: null, error: null, audioError: null, audio: audio !== 'fakesink' });
+        this.update({ phase: 'starting', profile, directVideo, videoViewport: this.videoViewport, viewportError, connected: false, supportsSessionStatus: false, origin: null, supportsVideoStop: false, supportsAutomaticMedia: false, detached: false, playlistPending: false, music: profile !== 'video' ? emptyMusic() : null, mode: profile === 'audio' ? 'audio' : 'waiting', returnMode: 'waiting', pin, file, frame: null, error: viewportError, audioError: null, audio: audio !== 'fakesink' });
         this.emit('music-directory', this.musicDirectory);
         // Node 8 has no ChildProcess "spawn" event. spawn() already returns
         // a pid on success; still handle its asynchronous error event below.
@@ -155,13 +225,15 @@ class Receiver extends EventEmitter {
                 this.stopTimer = this.stopFailTimer = null;
             }
             if (this.child === child) this.child = null;
+            removeVideoViewport(viewportFile);
+            if (this.viewportFile === viewportFile) { this.viewportFile = ''; this.viewportApplied = ''; }
             if (metadata) metadata.close();
             this.musicDirectory = ''; this.emit('music-directory', '');
             if (file) try {
                 const st = fs.lstatSync(file);
                 if (st.isFile() && !st.isSymbolicLink() && st.nlink === 1 && st.uid === uid) fs.unlinkSync(file);
             } catch (e) {}
-            this.update({ phase: error ? 'error' : 'stopped', mode: null, origin: null, supportsVideoStop: false, supportsAutomaticMedia: false, detached: false, playlistPending: false, music: null, pin: '', frame: null, file: '', error: error || null });
+            this.update({ phase: error ? 'error' : 'stopped', mode: null, connected: false, supportsSessionStatus: false, origin: null, supportsVideoStop: false, supportsAutomaticMedia: false, detached: false, playlistPending: false, music: null, pin: '', frame: null, file: '', viewportError: null, error: error || null });
             this.emit('ended');
         };
         child.once('error', () => {
@@ -206,12 +278,19 @@ class Receiver extends EventEmitter {
                 if (line === 'MGU_FEATURES playlist') this.features.playlist = true;
                 if (line === 'MGU_FEATURES audio-only') this.features.audioOnly = true;
                 if (line === 'MGU_FEATURES auto-media') { this.features.autoMedia = true; this.update({ supportsAutomaticMedia: true }); }
+                if (line === 'MGU_FEATURES session-status') { this.features.sessionStatus = true; this.update({ supportsSessionStatus: true }); }
+                if (line === 'MGU_SESSION connected' || line === 'MGU_SESSION disconnected') {
+                    this.features.sessionStatus = true;
+                    this.update({ connected: line === 'MGU_SESSION connected', supportsSessionStatus: true });
+                }
+                if (line === 'MGU_CONN 0' && !this.features.sessionStatus && this.state.mode !== 'hls') this.update({ connected: false });
                 if (profile !== 'video' && line === 'MGU_MODE audio') {
                     hideOldFrame(); wasMirroring = false; nativeOrigin = null;
                     this.update({ phase: 'waiting', mode: 'audio', origin: null, returnMode: 'waiting', frame: null, playlistPending: false });
                 }
                 if (profile !== 'video' && line === 'MGU_AUDIO_PLAY') {
-                    this.update({ phase: 'audio', mode: 'audio', frame: null, error: null });
+                    this.update(Object.assign({ phase: 'audio', mode: 'audio', frame: null, error: null },
+                        this.features.sessionStatus ? {} : { connected: true }));
                     this.emit('media', 'audio');
                 }
                 if (profile !== 'video' && this.state.mode === 'audio' && (line === 'MGU_AUDIO_WAITING' || line === 'MGU_CONN 0'))
@@ -250,7 +329,10 @@ class Receiver extends EventEmitter {
                     this.update(Object.assign({ phase: 'loading', frame: null, error: null },
                         profile === 'auto' && this.state.mode === 'audio' ? { mode: 'hls' } : {}));
                 }
-                if (line === 'MGU_MEDIA_PLAY') this.emit('media', 'hls');
+                if (line === 'MGU_MEDIA_PLAY') {
+                    if (!this.features.sessionStatus) this.update({ connected: true });
+                    this.emit('media', 'hls');
+                }
                 // Older runtimes used this marker for detached mirror-origin
                 // videos. New runtimes report origin and honor phone controls.
                 if (line === 'MGU_MEDIA_DETACHED' && this.state.mode === 'hls' && !this.features.videoModes) { this.update({ detached: true, returnMode: 'mirror' }); this.emit('diagnostic', 'video_detached_from_phone'); }
@@ -307,7 +389,7 @@ class Receiver extends EventEmitter {
             if (frame && frame.generation === blockedGeneration) return;
             const key = frame && [frame.generation, frame.sequence, frame.width, frame.height].join(':');
             if (frame && frame.sequence && key !== lastSequence) {
-                lastSequence = key; this.update({ phase: 'mirroring', frame });
+                lastSequence = key; this.update(Object.assign({ phase: 'mirroring', frame }, this.features.sessionStatus ? {} : { connected: true }));
             }
         }, 100);
         if (metadata) {
@@ -355,7 +437,7 @@ class Receiver extends EventEmitter {
         const child = this.child || this.stoppingChild;
         if (!child) return Promise.resolve();
         this.stoppingChild = child;
-        this.update({ phase: 'stopping', pin: '', frame: null });
+        this.update({ phase: 'stopping', connected: false, pin: '', frame: null });
         const pending = new Promise((resolve, reject) => {
             let groupPoll = null;
             const cleanup = () => {
@@ -394,4 +476,4 @@ class Receiver extends EventEmitter {
     }
     destroy() { this.closed = true; return this.stop(); }
 }
-module.exports = { Receiver, frameHeader };
+module.exports = { Receiver, frameHeader, validVideoViewport };

@@ -37,6 +37,8 @@ def collect():
     for name, mode in [('launch.js', 0o644), ('activate.js', 0o644), ('deactivate.js', 0o644), ('check.sh', 0o755)]:
         entries.append((name, (ROOT / 'airplay/runtime' / name).read_bytes(), mode))
     entries.append(('network.js', (ROOT / 'airplay/network.js').read_bytes(), 0o644))
+    for name in ['LICENSE', 'LICENSE.md', 'THIRD_PARTY_NOTICES.md']:
+        entries.append((name, (ROOT / name).read_bytes(), 0o644))
     return manifest, entries
 
 

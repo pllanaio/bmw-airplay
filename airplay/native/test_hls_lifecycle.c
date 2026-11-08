@@ -58,6 +58,33 @@ int main(int argc, char **argv) {
     gst_message_unref(buffered);
     gst_element_get_state(r->pipeline, &state, NULL, 100 * GST_MSECOND);
     g_assert_cmpint(state, !=, GST_STATE_PLAYING); /* Buffer fill must respect an explicit pause. */
+    /* A prerolled file with no BUFFERING events is ready even if the sender
+       paused first. It stays paused until a subsequent explicit resume. */
+    g_atomic_int_set(&mgu_hls_buffering_seen, 0); hls_buffer_full = FALSE;
+    GstMessage *prerolled = gst_message_new_async_done(GST_OBJECT(r->pipeline), GST_CLOCK_TIME_NONE);
+    gstreamer_video_pipeline_bus_callback(r->bus, prerolled, NULL);
+    g_assert(hls_buffer_full && !mgu_hls_play_requested);
+    gst_element_get_state(r->pipeline, &state, NULL, 100 * GST_MSECOND);
+    g_assert_cmpint(state, !=, GST_STATE_PLAYING);
+    video_renderer_resume();
+    gst_element_get_state(r->pipeline, &state, NULL, 100 * GST_MSECOND);
+    g_assert_cmpint(state, ==, GST_STATE_PLAYING);
+    video_renderer_pause();
+    buffered = gst_message_new_buffering(GST_OBJECT(r->pipeline), 0);
+    gstreamer_video_pipeline_bus_callback(r->bus, buffered, NULL); gst_message_unref(buffered);
+    gstreamer_video_pipeline_bus_callback(r->bus, prerolled, NULL);
+    g_assert(!hls_buffer_full && g_atomic_int_get(&mgu_hls_buffering_seen));
+    /* An old generation's queued ASYNC_DONE must never start its successor. */
+    video_renderer_begin_hls_transition();
+    gstreamer_video_pipeline_bus_callback(r->bus, prerolled, NULL);
+    g_assert(!hls_buffer_full);
+    g_atomic_int_set(&mgu_hls_pipeline_generation, g_atomic_int_get(&mgu_hls_generation));
+    video_renderer_resume();
+    video_renderer_request_hls_stop();
+    gstreamer_video_pipeline_bus_callback(r->bus, prerolled, NULL);
+    g_assert(!hls_buffer_full); /* Explicit teardown wins over queued preroll. */
+    gst_message_unref(prerolled);
+    g_atomic_int_set(&mgu_hls_stop_requested, 0);
     /* The HTTP thread serves the HLS GET that a renderer teardown may await.
        Its stop request must complete even while GLib owns the renderer lock;
        only the GLib EOS/reset watcher may perform the pipeline state change. */

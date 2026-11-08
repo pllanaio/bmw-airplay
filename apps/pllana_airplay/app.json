@@ -2,7 +2,7 @@
   "id": "pllana_airplay",
   "title": "BMW AirPlay by pllana.io",
   "description": "BMW AirPlay von Leon Pllana IT-Solutions · pllana.io",
-  "version": "0.4.5",
+  "version": "0.4.6",
   "vendor": "Leon Pllana IT-Solutions",
   "loggingId": "OAA1",
   "maxDiskUsage": 67108864,
@@ -15,7 +15,7 @@
     }
   },
   "screens": [{
-    "name": "MAIN", "kind": "canvas", "title": "BMW AirPlay by pllana.io", "bar": true,
+    "name": "MAIN", "kind": "canvas", "title": "BMW AirPlay by pllana.io", "bar": true, "borderless": true,
     "buttons": [["BTN_START", "Verbinden"], ["BTN_END_VIDEO", "Video beenden"], ["BTN_MIRROR", "Zur Spiegelung"], ["BTN_STOP", "Trennen"], ["BTN_CLOSE", "Schließen"]]
   }],
   "settings": [],

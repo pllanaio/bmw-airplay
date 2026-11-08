@@ -4,7 +4,7 @@ const resolver = require('./resolver');
 resolver.refresh();
 setInterval(() => resolver.refresh(), 2000).unref();
 const fs = require('fs'), net = require('net'), path = require('path');
-const { Receiver } = require('./receiver');
+const { Receiver, validVideoViewport } = require('./receiver');
 const { MusicControls } = require('./music_controls');
 const { AudioRoute, AUDIO_SINK } = require('./audio_route');
 const signals = require('./kit/signals');
@@ -94,7 +94,7 @@ const DISCONNECT_GRACE_MS = 30000, HEARTBEAT_TIMEOUT_MS = 12000;
 const RESTART_DELAYS_MS = [1000, 2000, 4000, 8000, 15000], STABLE_MS = 60000;
 let queue = Promise.resolve(), client = null, heartbeat = 0, shuttingDown = false, intentionalStop = 0, checking = false;
 let wanted = false, graceTimer = null, restartTimer = null, stableTimer = null, failures = 0;
-let selectedProfile = 'auto', standaloneAudio = false, operationEpoch = 0, priorityStopping = null;
+let selectedProfile = 'auto', selectedViewport, standaloneAudio = false, operationEpoch = 0, priorityStopping = null;
 const enqueue = fn => { queue = queue.then(fn, fn).catch(() => send({ phase: 'error', error: 'backend_operation_failed', pin: '', frame: null })); return queue; };
 const persistsWithoutUI = () => selectedProfile === 'audio' || (selectedProfile === 'auto' && standaloneAudio);
 async function ensureAudio() {
@@ -174,7 +174,7 @@ function replyStop(socket, id, operation) {
 function startReceiver(keepPassword) {
     clearTimeout(restartTimer); restartTimer = null;
     resolver.refresh();
-    if (!receiver.start({ profile: selectedProfile, keepPassword: !!keepPassword })) return false;
+    if (!receiver.start({ profile: selectedProfile, viewport: selectedViewport, keepPassword: !!keepPassword })) return false;
     clearTimeout(stableTimer);
     stableTimer = setTimeout(() => { stableTimer = null; if (receiver.child) failures = 0; }, STABLE_MS);
     receiver.update({ audio: false });
@@ -218,10 +218,12 @@ const server = net.createServer(s => {
     client = s; heartbeat = Date.now(); s.setEncoding('utf8'); let pending = '';
     send();
     s.on('data', chunk => {
+        if (s !== client || s.destroyed) return;
         pending += chunk;
         if (pending.length > 8192) { s.destroy(); return; }
         let at;
         while ((at = pending.indexOf('\n')) >= 0) {
+            if (s !== client || s.destroyed) return;
             const line = pending.slice(0, at); pending = pending.slice(at + 1);
             let request; try { request = JSON.parse(line); } catch (e) { s.destroy(); return; }
             if (!request || typeof request.command !== 'string') { s.destroy(); return; }
@@ -229,6 +231,11 @@ const server = net.createServer(s => {
             if (request.command === 'start') {
                 const profile = request.profile === undefined ? 'auto' : request.profile;
                 if (profile !== 'auto' && profile !== 'video' && profile !== 'audio') { s.destroy(); return; }
+                if (request.viewport !== undefined) {
+                    if (!request.viewport || !validVideoViewport(request.viewport.width, request.viewport.height)) { s.destroy(); return; }
+                    selectedViewport = { width: request.viewport.width, height: request.viewport.height };
+                    if (receiver.child) receiver.setVideoViewport(selectedViewport.width, selectedViewport.height);
+                }
                 let epoch = operationEpoch;
                 enqueue(async () => {
                     if (shuttingDown || epoch !== operationEpoch) return;
@@ -253,6 +260,11 @@ const server = net.createServer(s => {
                         await ensureAudio();
                     }
                 });
+            }
+            else if (request.command === 'video-viewport') {
+                if (!validVideoViewport(request.width, request.height)) { s.destroy(); return; }
+                selectedViewport = { width: request.width, height: request.height };
+                receiver.setVideoViewport(request.width, request.height);
             }
             else if (request.command === 'stop') {
                 if (request.id !== undefined && (typeof request.id !== 'string' || !/^[a-zA-Z0-9_-]{1,64}$/.test(request.id))) { s.destroy(); return; }

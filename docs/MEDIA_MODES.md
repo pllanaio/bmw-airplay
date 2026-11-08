@@ -1,6 +1,6 @@
 # Video, Bildschirmspiegelung und reine Musikwiedergabe
 
-App und Empfänger **0.4.5** erkennen Audio und Video automatisch,
+App und Empfänger **0.4.6** erkennen Audio und Video automatisch,
 unterscheiden den Ursprung eines Videos und
 respektieren ausdrückliche Wiedergabesteuerung. Das sechsstellige Passwort
 und der bereitstehende Empfänger bleiben beim Beenden eines einzelnen
@@ -19,6 +19,8 @@ Videos erhalten.
   Für Musik denselben Empfänger als Audioausgabe wählen. Der Empfänger
   erkennt den Transport und wechselt automatisch zur passenden Ansicht,
   ohne die AirPlay-Verbindung für den Moduswechsel neu zu starten.
+  Auch ein aus einer Musik-App neu gewählter Audiotransport darf ein
+  bereits laufendes oder noch ladendes Video ablösen.
 - **Video beenden:** Nur das aktuelle Video bzw. dessen Ladevorgang beenden.
   Der Ursprung bestimmt die Rückkehr zur Spiegelung oder zum Warten.
 - **Zur Spiegelung:** Ausdrücklich zur Bildschirmspiegelung zurückkehren,
@@ -68,19 +70,37 @@ Wird AirPlay bzw. die Spiegelung am iPhone vollständig getrennt, bleibt der
 MGU-Empfänger verfügbar. Er kann keine vom iPhone getrennte Verbindung oder
 Bildschirmspiegelung selbst wiederherstellen.
 
-## Vollständige Videos in 1920 × 504 ohne Beschnitt
+## Vollständige Videos auf der tatsächlichen Displayfläche
 
-Ab 0.4.5 werden HLS-Videos als vollständiges I420-Bild auf **1920 × 504**
-skaliert. Horizontale und vertikale Skalierung dürfen sich unterscheiden:
+Ab 0.4.6 werden HLS-Videos als vollständiges I420-Bild auf die jeweils
+genutzte Fläche skaliert: beispielsweise **1920 × 720** im Vollbild,
+**1920 × 504** auf einer so hohen Fläche und **1600 × 560** im randlosen
+Bedienlayout auf 1920×720. Horizontale und vertikale Skalierung dürfen sich unterscheiden:
 Das Bild wird passend gedehnt oder gestaucht. Es gibt keinen Zoom,
 keinen Aspect-Ratio-Crop und keine abgeschnittenen oberen, unteren oder
-seitlichen Bildteile. Das ersetzt den zentrierten Beschnitt aus 0.4.4.
+seitlichen Bildteile. Das ersetzt den zentrierten Beschnitt aus 0.4.4 und
+die feste 504-Pixel-Ausgabe aus 0.4.5. Bei Größenwechseln wird die laufende
+Pipeline neu ausgehandelt; die AirPlay-Sitzung bleibt bestehen.
 
 Die Ausgabe erzeugt keine zusätzlichen Letterbox-/Pillarbox-Ränder.
 Bereits in der Quelle kodierte schwarze Bildinhalte bleiben als Teil des
 vollständigen Bildes erhalten. In abweichenden Oberflächenlayouts bleibt
 ebenfalls der vollständige Frame sichtbar. Normale Bildschirmspiegelung
 zeigt weiterhin die gesamte iPhone-Oberfläche.
+
+## Verbindungsstatus im Hauptbildschirm
+
+„Empfang bereit“ bedeutet, dass der Empfänger gestartet ist und auf ein
+iPhone wartet. Der Code wird in dieser Phase angezeigt. Sobald eine
+akzeptierte AirPlay-Sitzung besteht, zeigt die Oberfläche „Mit iPhone
+verbunden“ und blendet den Code aus. Der Status bleibt bei Pause und
+zwischen Titeln erhalten, solange die entsprechenden Sitzungsverbindungen
+bestehen. Nach vollständigem Trennen erscheint keine aktive Verbindung mehr.
+
+Der linke BMW-Rahmen und die obere Titel-/Statusleiste werden innerhalb der
+App durch die eigene Fläche abgedeckt. Die untere Bedienleiste bleibt
+verfügbar. Ein Touch oder iDrive-Ereignis blendet bei Vollbildvideo die
+Bedienung vorübergehend ein; das Video folgt der dadurch geänderten Fläche.
 
 ## Audio bei geschlossener Oberfläche
 
@@ -108,7 +128,7 @@ Spotify-/YouTube-Music- oder YouTube-Test am iPhone.
    Musiktasten sehen. BMW Home → Pause/Fortsetzen und nächster Titel.
    Anschließend „Trennen“ prüfen; am iPhone darf die aktive Audioverbindung
    nicht bestehen bleiben.
-5. Videos in 16:9, 21:9 und 16:10 auf der 1920-×-504-Fläche prüfen;
+5. Videos in 16:9, 21:9 und 16:10 auf der tatsächlichen Vollbildfläche prüfen;
    vollständige obere/untere/seitliche Kanten und alle vier Bildecken
    prüfen. Dehnung/Stauchung ist beabsichtigt; Beschnitt ist nicht erlaubt.
 6. In derselben Empfängersitzung Musik → Video/Spiegelung → Musik wechseln;

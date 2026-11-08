@@ -208,13 +208,13 @@ int main(int argc, char **argv) {
     mgu_video_loading(NULL);
     assert(video_renderer_is_hls_active() && g_atomic_int_get(&mgu_pending_origin));
     assert(g_atomic_int_get(&mgu_audio_kind) == 2 && !g_atomic_int_get(&mgu_audio_playing));
-    format(audio, 8, false, true); audio_process(NULL, NULL, &audio); audio_flush(NULL);
+    format(audio, 8, true, true); audio_process(NULL, NULL, &audio); audio_flush(NULL);
     assert(video_renderer_is_hls_active() && !g_atomic_int_get(&mgu_audio_playing) && !reset_loop);
     markers(capture, 7, 5);
     on_video_play(NULL, "http://127.0.0.1/automatic-video.m3u8", 0.0f);
     assert(video_renderer_is_hls_active() && !g_atomic_int_get(&mgu_pending_origin));
     reset_loop = false;
-    format(audio, 2, false, false); audio_process(NULL, NULL, &audio); audio_flush(NULL);
+    format(audio, 2, true, false); audio_process(NULL, NULL, &audio); audio_flush(NULL);
     assert(video_renderer_is_hls_active() && !g_atomic_int_get(&mgu_audio_playing) && !reset_loop);
     markers(capture, 7, 5);
     video_reset(NULL, RESET_TYPE_HLS_EOS);
