@@ -15,13 +15,17 @@ WORK.mkdir(parents=True, exist_ok=True)
 def run(args, **kw):
     return subprocess.run([str(a) for a in args], check=True, **kw)
 fixtures = [(640, 360, 'video')]
-if '--cover' in sys.argv:
+if '--stretch' in sys.argv or '--cover' in sys.argv:  # old CI flag remains an alias
     fixtures += [(840, 360, 'cinema'), (640, 400, '16-10'), (360, 640, 'portrait'),
                  (1280, 252, 'ultrawide'), (960, 252, 'screen')]
 for width, height, name in fixtures:
-    # A predictable luma gradient lets the C probe distinguish a central
-    # aspect-preserving crop from stretching, as well as spot black bars.
-    pattern = "nullsrc=size=%dx%d:rate=25,geq=lum='64+80*X/W+80*Y/H':cb=128:cr=128" % (width, height)
+    # Distinct corners prove no source edge was removed. The asymmetric
+    # gradient proves independent scaling on both axes rather than a crop.
+    luma = ("if(lt(X,W/8)*lt(Y,H/8),40,"
+            "if(gte(X,7*W/8)*lt(Y,H/8),88,"
+            "if(lt(X,W/8)*gte(Y,7*H/8),160,"
+            "if(gte(X,7*W/8)*gte(Y,7*H/8),208,64+72*X/W+40*Y/H))))")
+    pattern = "nullsrc=size=%dx%d:rate=25,geq=lum='%s':cb=128:cr=128" % (width, height, luma)
     run(['ffmpeg', '-loglevel', 'error', '-y', '-f', 'lavfi', '-i', pattern,
          '-f', 'lavfi', '-i', 'sine=frequency=440:sample_rate=48000', '-t', '3',
          '-c:v', 'libx264', '-preset', 'ultrafast', '-g', '25', '-c:a', 'aac',

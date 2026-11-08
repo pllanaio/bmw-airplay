@@ -8,14 +8,34 @@ einem separat installierten UxPlay-Empfänger und BMW-Audiorouting.
 Die bisherige Erprobung ist keine Freigabe für alle MGU-Hardwarestände,
 Fahrzeugausstattungen, iPhone-Apps oder iOS-Versionen.
 
-Der vorbereitete Quellstand für App und Laufzeit ist **0.4.4**. Die neuen
-Änderungen sind lokal geprüft, noch nicht am Fahrzeug abgenommen. Die
+Der vorbereitete Quellstand für App und Laufzeit ist **0.4.5**. Die neuen
+Änderungen sind lokal geprüft und noch nicht am Fahrzeug abgenommen. Die
 Fahrzeugbestätigungen weiter unten beziehen sich auf die dort genannten
 älteren Versionen.
 
 Der historische Git-Tag v0.2.6 bezeichnet den ersten veröffentlichten
 Quellcode-Snapshot. Die nachträgliche Store-Anbindung und diese ausführliche
 Dokumentation stehen auf main. Der Tag wird dafür nicht nachträglich verschoben.
+
+## Änderungen in 0.4.5 – automatische Medienwahl und vollständiges Trennen
+
+- „Verbinden“ startet einen gemeinsamen Audio-/Videoempfänger. Musik,
+  Spiegelung und HLS-Video wechseln die Anzeige anhand tatsächlicher
+  Transportereignisse; eine manuelle Audioauswahl entfällt.
+- Musikinformationen und Fernsteuerung stehen auch im automatischen
+  Empfang bereit. Spiegelungston und Videoton übernehmen die Anzeige
+  nicht als vermeintlich eigenständige Musik.
+- „Trennen“ verwirft Wiederverbindungsaufträge sofort, beendet den nativen
+  Empfänger und gibt den BMW-Audiopfad frei. Erst danach erhält die
+  Oberfläche die Bestätigung. „Schließen“ wartet auf denselben Abschluss.
+- Die native Abschaltung unterbricht wartende Netzwerkverbindungen, damit
+  unvollständige AirPlay-Anfragen den Verbindungsabbau nicht blockieren.
+- HLS-Videos werden vollständig auf 1920×504 gedehnt oder gestaucht.
+  Der Beschnitt aus 0.4.4 entfällt; keine Bildkante darf abgeschnitten werden.
+
+Die erneute Prüfung am konkreten iPhone muss insbesondere bestätigen,
+dass die gewählte AirPlay-Audioausgabe nach „Trennen“ freigegeben wird.
+App und Empfänger gemeinsam auf 0.4.5 aktualisieren.
 
 ## Änderungen in 0.4.4 – stoppbare Videomodi und reines Audio
 

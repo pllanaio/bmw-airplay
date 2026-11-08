@@ -34,26 +34,17 @@ class VideoBridge {
         this.gpu = null; this.socket = null; this.file = '';
     }
     draw(canvas, x, y, w, h, frame, fit) {
-        // OP_VIDEO always contains the frame in its destination. Enlarge that
-        // destination at the source aspect, then clip the excess: a centred
-        // cover crop for streamed video. Mirroring uses contain so the whole
-        // phone screen, including its controls, stays visible on return.
-        if (!(w > 0 && h > 0)) return;
-        let dx = x, dy = y, dw = w, dh = h;
-        if (fit !== 'contain') {
-            const fw = frame && frame.width, fh = frame && frame.height;
-            if (!(fw > 0 && fh > 0)) return;
-            const scale = Math.max(w / fw, h / fh);
-            dw = fw * scale; dh = fh * scale;
-            dx += (w - dw) / 2; dy += (h - dh) / 2;
-        }
-        canvas.clip(x, y, w, h);
+        // Native HLS frames are already stretched to 1920x504 without a crop.
+        // OP_VIDEO contains its input: it has no documented stretch flag.
+        // Keep that exact destination for every fit (including old callers),
+        // so a legacy frame or a different viewport keeps all source content.
+        // Never enlarge/clip the video or repurpose OP19's corner-radius word.
+        if (!(w > 0 && h > 0) || !frame || !(frame.width > 0 && frame.height > 0)) return;
         canvas._grow(7); const i = canvas.n;
         canvas.u[i] = 19;
-        canvas.f[i + 1] = dx; canvas.f[i + 2] = dy;
-        canvas.f[i + 3] = dw; canvas.f[i + 4] = dh;
+        canvas.f[i + 1] = x; canvas.f[i + 2] = y;
+        canvas.f[i + 3] = w; canvas.f[i + 4] = h;
         canvas.f[i + 5] = 0; canvas.u[i + 6] = 1; canvas.n += 7;
-        canvas.noclip();
     }
 }
 module.exports = { VideoBridge, message };

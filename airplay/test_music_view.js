@@ -5,7 +5,7 @@ const targets = [], labels = [], actions = [];
 const c = { clear() {}, gradientRect() {}, image() {}, roundRect() {}, strokeRoundRect() {}, circle() {}, line() {},
     text: value => labels.push(value), target: (x, y, w, h, run, key) => targets.push({ run, key }) };
 let artDraws = 0;
-const state = { profile: 'audio', phase: 'audio', pin: '123456', music: { title: 'Testtitel', artist: 'Interpret', album: 'Album',
+const state = { profile: 'auto', mode: 'audio', phase: 'audio', pin: '123456', music: { title: 'Testtitel', artist: 'Interpret', album: 'Album',
     playbackState: 'playing', shuffle: 1, repeat: 2, controls: { playPause: true, next: true, previous: true, shuffle: true, repeat: true } } };
 drawHome(c, state, '', null, { draw() { artDraws++; return true; } }, action => actions.push(action));
 assert.strictEqual(artDraws, 1); assert(labels.includes('Testtitel')); assert(labels.includes('Interpret')); assert(labels.includes('Album'));

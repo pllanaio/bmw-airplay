@@ -22,7 +22,7 @@ const music = new MusicControls({
     directory: () => receiver.musicDirectory,
     resolveBinary: [path.join(receiver.runtime, 'lib/ld-linux-x86-64.so.2'), '--library-path', path.join(receiver.runtime, 'lib'), path.join(receiver.runtime, 'bin/mgu-dacp-resolve')],
     onState: remote => {
-        if (!receiver.child || receiver.state.profile !== 'audio' || !receiver.state.music) return;
+        if (!receiver.child || receiver.state.phase === 'stopping' || receiver.state.profile === 'video' || !receiver.state.music) return;
         const next = Object.assign({}, receiver.state.music, remote);
         if (remote.epoch !== receiver.state.music.epoch) next.controlError = null;
         receiver.update({ music: next });
@@ -30,7 +30,7 @@ const music = new MusicControls({
 });
 let musicPolling = false, musicQueued = 0, musicQueue = Promise.resolve();
 function pollMusic() {
-    if (musicPolling) return;
+    if (musicPolling || receiver.state.phase === 'stopping') return;
     musicPolling = true;
     Promise.resolve().then(() => music.poll()).catch(() => {}).then(() => { musicPolling = false; });
 }
@@ -46,7 +46,8 @@ function musicRequest(request) {
 }
 function currentMusicRequest(request) {
     const current = receiver.state.music;
-    return receiver.child && receiver.state.profile === 'audio' && current && current.epoch === request.epoch &&
+    return wanted && !intentionalStop && receiver.child && receiver.state.phase !== 'stopping' &&
+        (receiver.state.mode === 'audio' || receiver.state.profile === 'audio') && current && current.epoch === request.epoch &&
         current.controls && current.controls[request.action] === true;
 }
 function musicError(code) {
@@ -85,20 +86,29 @@ receiver.on('diagnostic', code => {
 const route = new AudioRoute(signals);
 // A frontend that disappears (app manager restart, stalled event loop, HMI
 // focus change) no longer ends the phone's AirPlay session immediately. Only
-// an explicit stop/close does. Video has a grace period; selected audio-only
-// reception survives a UI restart or leaving the app until explicit stop.
+// an explicit stop/close does. Video has a grace period; detected standalone
+// audio survives a UI restart or leaving the app until explicit stop.
 const DISCONNECT_GRACE_MS = 30000, HEARTBEAT_TIMEOUT_MS = 12000;
 // An unexpected receiver exit (native crash after a failed media download,
 // pipeline error) restarts it with the same password and backoff.
 const RESTART_DELAYS_MS = [1000, 2000, 4000, 8000, 15000], STABLE_MS = 60000;
-let queue = Promise.resolve(), client = null, heartbeat = 0, shuttingDown = false, intentionalStop = false, checking = false;
+let queue = Promise.resolve(), client = null, heartbeat = 0, shuttingDown = false, intentionalStop = 0, checking = false;
 let wanted = false, graceTimer = null, restartTimer = null, stableTimer = null, failures = 0;
-let selectedProfile = 'video';
+let selectedProfile = 'auto', standaloneAudio = false, operationEpoch = 0, priorityStopping = null;
 const enqueue = fn => { queue = queue.then(fn, fn).catch(() => send({ phase: 'error', error: 'backend_operation_failed', pin: '', frame: null })); return queue; };
+const persistsWithoutUI = () => selectedProfile === 'audio' || (selectedProfile === 'auto' && standaloneAudio);
 async function ensureAudio() {
-    if (!receiver.child || (!client && selectedProfile !== 'audio') || shuttingDown || route.owned) return;
-    try { await route.acquire(); receiver.update({ audio: true, audioError: null }); }
-    catch (e) { receiver.update({ audio: false, audioError: 'audio_unavailable' }); }
+    if (!wanted || !receiver.child || (!client && !persistsWithoutUI()) || shuttingDown || intentionalStop || route.owned) return;
+    const epoch = operationEpoch;
+    try {
+        await route.acquire();
+        // Explicit stop can overtake an in-flight BMW audio acquisition.
+        // Release any late grant before acknowledging that stop.
+        if (epoch !== operationEpoch || !wanted || !receiver.child || intentionalStop) { await route.release(); return; }
+        receiver.update({ audio: true, audioError: null });
+    } catch (e) {
+        if (epoch === operationEpoch && wanted && receiver.child) receiver.update({ audio: false, audioError: 'audio_unavailable' });
+    }
 }
 receiver.on('media', () => enqueue(ensureAudio));
 // Only the historical runtime needs this fallback. Origin-aware runtimes
@@ -113,13 +123,53 @@ function send(state) {
         client.write(JSON.stringify({ state: state || receiver.state }) + '\n');
     }
 }
-async function stop() {
+function cancelReception() {
+    operationEpoch++; standaloneAudio = false;
     wanted = false; failures = 0;
     clearTimeout(graceTimer); clearTimeout(restartTimer); clearTimeout(stableTimer);
     graceTimer = restartTimer = stableTimer = null;
-    intentionalStop = true;
-    try { await receiver.stop(); await route.release(); }
-    finally { intentionalStop = false; }
+    music.clear();
+}
+async function finishStop(priorOperations) {
+    intentionalStop++;
+    try {
+        // Start closing native sockets immediately, even when a BMW audio
+        // request is still pending in the ordinary operation queue.
+        const native = Promise.resolve().then(() => receiver.stop()).then(() => null, error => error);
+        const cleanup = Promise.resolve(priorOperations).then(() => route.release()).then(() => null, error => error);
+        const results = await Promise.all([native, cleanup]);
+        if (!results[1]) receiver.update({ audio: false });
+        if (results[0] || results[1]) throw results[0] || results[1];
+    } finally { intentionalStop--; }
+}
+function stop() {
+    cancelReception(); return finishStop();
+}
+function priorityStop() {
+    cancelReception();
+    if (priorityStopping) return priorityStopping;
+    const pending = finishStop(queue);
+    priorityStopping = pending;
+    // Later starts wait for cleanup; starts already queued carry an old
+    // epoch and cannot resurrect the just-disconnected receiver.
+    queue = pending.catch(() => {});
+    const finished = () => { if (priorityStopping === pending) priorityStopping = null; };
+    pending.then(finished, finished);
+    return pending;
+}
+function replyStop(socket, id, operation) {
+    if (id === undefined) { operation.catch(() => {}); return; }
+    let timeout, replied = false;
+    const reply = ok => {
+        if (replied) return; replied = true; clearTimeout(timeout);
+        if (socket.destroyed) return;
+        if (socket.writableLength > 32768) { socket.destroy(); return; }
+        const result = { command: 'stop', id, ok };
+        if (!ok) result.error = 'receiver_stop_failed';
+        socket.write(JSON.stringify({ reply: result }) + '\n');
+    };
+    timeout = setTimeout(() => reply(false), 10000);
+    operation.then(() => reply(true), () => reply(false));
 }
 function startReceiver(keepPassword) {
     clearTimeout(restartTimer); restartTimer = null;
@@ -143,7 +193,19 @@ function scheduleRestart() {
         else scheduleRestart();
     }), delay);
 }
-receiver.on('state', send);
+function graceWithoutUI() {
+    if (client || !wanted || persistsWithoutUI()) {
+        clearTimeout(graceTimer); graceTimer = null; return;
+    }
+    if (!graceTimer) graceTimer = setTimeout(() => {
+        graceTimer = null; if (!client && !persistsWithoutUI()) priorityStop().catch(() => {});
+    }, DISCONNECT_GRACE_MS);
+}
+receiver.on('state', state => {
+    if (wanted && state.mode === 'audio') standaloneAudio = true;
+    else if (wanted && (state.mode === 'mirror' || state.mode === 'hls')) standaloneAudio = false;
+    graceWithoutUI(); send(state);
+});
 receiver.on('ended', () => {
     if (intentionalStop) return;
     enqueue(() => route.release());
@@ -165,20 +227,22 @@ const server = net.createServer(s => {
             if (!request || typeof request.command !== 'string') { s.destroy(); return; }
             heartbeat = Date.now();
             if (request.command === 'start') {
-                const profile = request.profile === undefined ? 'video' : request.profile;
-                if (profile !== 'video' && profile !== 'audio') { s.destroy(); return; }
+                const profile = request.profile === undefined ? 'auto' : request.profile;
+                if (profile !== 'auto' && profile !== 'video' && profile !== 'audio') { s.destroy(); return; }
+                let epoch = operationEpoch;
                 enqueue(async () => {
-                    if (shuttingDown) return;
+                    if (shuttingDown || epoch !== operationEpoch) return;
                     if (s !== client || s.destroyed) return;
-                    if (receiver.child && selectedProfile === profile) { wanted = true; await ensureAudio(); return; }
+                    const interruptedStop = receiver.state.phase === 'stopping' || receiver.stoppingChild;
+                    if (receiver.child && selectedProfile === profile && !interruptedStop) { wanted = true; await ensureAudio(); return; }
                     // A manual start during a pending recovery starts at once and
                     // keeps the password the phone already knows. Changing the
                     // advertised audio/video capabilities deliberately restarts
                     // the receiver too, retaining that same pairing password.
                     const switching = selectedProfile !== profile && (receiver.child || wanted || restartTimer);
-                    const keepPassword = !!restartTimer || !!switching;
-                    if (switching) await stop();
-                    if (shuttingDown || ((s !== client || s.destroyed) && profile !== 'audio')) return;
+                    const keepPassword = !!restartTimer || !!switching || !!interruptedStop;
+                    if (switching || interruptedStop) { const stopped = stop(); epoch = operationEpoch; await stopped; }
+                    if (shuttingDown || epoch !== operationEpoch || ((s !== client || s.destroyed) && profile !== 'audio')) return;
                     selectedProfile = profile;
                     if (profile === 'audio') { clearTimeout(graceTimer); graceTimer = null; }
                     failures = 0;
@@ -190,7 +254,10 @@ const server = net.createServer(s => {
                     }
                 });
             }
-            else if (request.command === 'stop') enqueue(stop);
+            else if (request.command === 'stop') {
+                if (request.id !== undefined && (typeof request.id !== 'string' || !/^[a-zA-Z0-9_-]{1,64}$/.test(request.id))) { s.destroy(); return; }
+                replyStop(s, request.id, priorityStop());
+            }
             else if (request.command === 'end-video') receiver.endVideo();
             else if (request.command === 'resume-mirror') receiver.resumeMirror();
             else if (request.command === 'music-control') {
@@ -203,10 +270,8 @@ const server = net.createServer(s => {
     s.on('close', () => {
         if (client !== s) return;
         client = null;
-        if (selectedProfile === 'audio' && wanted) return;
-        if (!receiver.child && !restartTimer) { enqueue(stop); return; }
-        clearTimeout(graceTimer);
-        graceTimer = setTimeout(() => { graceTimer = null; if (!client) enqueue(stop); }, DISCONNECT_GRACE_MS);
+        if (!receiver.child && !restartTimer && !intentionalStop) { priorityStop().catch(() => {}); return; }
+        graceWithoutUI();
     });
     s.on('error', () => {});
 });
@@ -231,7 +296,7 @@ const timer = setInterval(() => {
         checking = true;
         enqueue(async () => {
             try {
-                if (!receiver.child || shuttingDown) return;
+                if (!receiver.child || shuttingDown || intentionalStop || !wanted) return;
                 if (route.owned && !await route.check()) {
                     await route.release();
                     receiver.update({ audio: false, audioError: 'audio_unavailable' });
@@ -249,12 +314,12 @@ function shutdown(code) {
     if (client) client.destroy();
     server.close();
     const hard = setTimeout(() => process.exit(1), 12000);
-    enqueue(stop).then(() => {
+    priorityStop().then(() => {
         clearTimeout(hard);
         // Never delete a socket a newer backend already created at this path.
         try { if (identity(socketPath) === ownSocket) fs.unlinkSync(socketPath); } catch (e) {}
         process.exit(typeof code === 'number' ? code : 0);
-    });
+    }, () => { clearTimeout(hard); process.exit(1); });
 }
 process.on('SIGTERM', () => shutdown()); process.on('SIGINT', () => shutdown());
 process.on('exit', () => receiver.signal(receiver.child, 'SIGTERM'));

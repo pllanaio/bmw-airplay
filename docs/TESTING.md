@@ -25,7 +25,8 @@ Alternativ die folgenden Dateien einzeln mit Node ausführen:
 | airplay/test_audio_route.js | Eigentum am Audiopfad, Wiederherstellung, fremde Quellen erhalten, keine Lautstärkeänderung |
 | airplay/test_backend.js | Empfängerstart trotz belegtem Audio, erneute Audioanforderung, Fokusverlust ohne Netzwerkende, ausdrückliches Stoppen |
 | airplay/test_receiver.js | Node-8-Startverhalten, stabiler Gerätename/-kennung, Passwortmodus, Modus-/Rückkehrzustände, begrenzte Absturzdiagnose |
-| airplay/test_frontend_lifecycle.js | UI-/Fokuswechsel erhalten die Sitzung, Stop/Schließen beenden sie |
+| airplay/test_frontend_lifecycle.js | Automatische Musik-/Videoansicht; UI-/Fokuswechsel erhalten die Sitzung, Stop/Schließen warten auf Bestätigung und bleiben bei Fehler bedienbar |
+| airplay/test_receiver_disconnect.js | Tatsächliche Prozessgruppen mit TCP-Verbindung, TERM/KILL, beendeten Gruppenleitern und offenen/verwaisten Unterprozessen |
 | airplay/test_video_bridge.js | Neuer Frame-Transport, geändertes Layout und Renderer-Wiederverbindung |
 | airplay/test_backend_client.js | Profilwahl, getrenntes Videoende/Trennen und Ende der Oberfläche ohne impliziten Stop |
 | airplay/test_network.js | BMW-WLAN ohne Startadresse, wlan1, eigene Regeln nach Uplink-Neuaufbau, keine Änderung fremder Regeln und Monitor-Lebenszyklus |
@@ -69,6 +70,10 @@ Die Prüfungen umfassen:
 - Audio-Start-Sperre während der HLS-Übernahme;
 - tatsächliche ALAC-Dekodierung vor und nach Audio-Stop/Neustart;
 - nativer DMAP-/Artwork-Export und echte private JPEG-/PNG-Dekodierung zu 256×256 RGBA;
+- automatische Musik-/Spiegelungs-/HLS-Übergänge ohne Empfänger-Neustart,
+  mit Schutz vor altem Spiegelungston und alter Videodarstellung;
+- Beenden tatsächlicher TCP-/PTTH-Verbindungen bei voller Abschaltung,
+  einschließlich unvollständig gesendeter Anfragen;
 - Anfangspufferung und ausdrückliche Pause;
 - mehrfaches Zerstören und spätere Playback-Info-Anfragen;
 - getrennte alte/neue lokale Playlist-Routen;
@@ -149,18 +154,27 @@ SDK-Donor und das festgelegte öffentliche Kit.
 - Rohprotokolle, vollständige URLs mit Tokens, Pairing-Daten und
   Fahrzeugidentifikatoren nicht in öffentliche Testberichte übernehmen.
 
-## Zusätzliche Prüfungen für 0.4.4
+## Zusätzliche Prüfungen für 0.4.5
 
 `test_lifecycle.sh` führt auch `test_audio_mode.cpp` (native Audiofähigkeiten,
 Flush/Teardown und kein Videopfad) sowie `test_audio_decode.py` aus. Letzterer
 erzeugt mit FFmpeg einen lokalen ALAC-Frame und prüft echte dekodierte
 PCM-Ausgabe vor und nach Audio-Stop/Neustart.
 
-`python3 airplay/tools/test_hls.py --cover` prüft tatsächliche dekodierte
+`test_auto_media.cpp` prüft die tatsächlichen gemischten Audio-/Video-
+Callbacks. `test_httpd_shutdown.c` hält einen Verbindungsdestruktor an,
+während alle Peer-Sockets bereits geschlossen sein müssen.
+`test_shutdown.cpp` startet die tatsächliche native Hauptschleife mit
+RAOP-/PTTH-/unvollständigen TCP-Verbindungen und echten RTP-UDP-Sockets;
+SIGTERM/SIGINT/SIGHUP müssen den Empfänger ohne Neustart beenden und die
+Ports freigeben.
+
+`python3 airplay/tools/test_hls.py --stretch` prüft tatsächliche dekodierte
 1920×504-Pixel für 16:9, 21:9, 16:10, Hochformat, ein breiteres Format und
-80:21. Bildfüllung, Mittelpunkt und fehlende künstliche Balken werden im
-Bildinhalt geprüft; die Bridge-Tests sichern proportionalen Cover-Beschnitt
-am Zielrechteck ab. Die Referenz ist ein synthetisches Quellbild.
+80:21. Vier unterschiedlich markierte Bildecken und ein asymmetrischer
+Farbverlauf müssen nach dem Dehnen/Stauchen erhalten bleiben. Die
+Bridge-Tests verbieten vergrößerte oder abgeschnittene Zielrechtecke.
+Die Referenz ist ein synthetisches Quellbild; künstliche Balken sind nicht erlaubt.
 
 Die iPhone-/Fahrzeugmatrix für Stop, beide Videomodi, reines Audio und die
 neue Bildfüllung steht in [MEDIA_MODES.md](MEDIA_MODES.md).
