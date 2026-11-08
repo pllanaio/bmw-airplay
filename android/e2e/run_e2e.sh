@@ -14,6 +14,9 @@ adb shell pm grant io.pllana.cast android.permission.RECORD_AUDIO || true
 adb shell pm grant io.pllana.cast android.permission.POST_NOTIFICATIONS || true
 adb shell appops set io.pllana.cast PROJECT_MEDIA allow || true
 adb shell input keyevent KEYCODE_WAKEUP; adb shell wm dismiss-keyguard || true
+# The emulator's network can come up after boot completes.
+for i in $(seq 1 60); do adb shell ping -c 1 -W 1 10.0.2.2 > /dev/null 2>&1 && break; sleep 2; done
+for i in $(seq 1 30); do adb shell "toybox nc -z -w 1 10.0.2.2 7104" > /dev/null 2>&1 && break; sleep 2; done
 adb logcat -c
 adb shell am start -n io.pllana.cast/.MainActivity --es host 10.0.2.2 --es code 246810 --ez autostart true
 mode=""
