@@ -8,7 +8,7 @@ einem separat installierten UxPlay-Empfänger und BMW-Audiorouting.
 Die bisherige Erprobung ist keine Freigabe für alle MGU-Hardwarestände,
 Fahrzeugausstattungen, iPhone-Apps oder iOS-Versionen.
 
-Der vorbereitete Quellstand für App und Laufzeit ist **0.4.5**. Die neuen
+Der vorbereitete Quellstand für App und Laufzeit ist **0.4.6**. Die neuen
 Änderungen sind lokal geprüft und noch nicht am Fahrzeug abgenommen. Die
 Fahrzeugbestätigungen weiter unten beziehen sich auf die dort genannten
 älteren Versionen.
@@ -16,6 +16,29 @@ Fahrzeugbestätigungen weiter unten beziehen sich auf die dort genannten
 Der historische Git-Tag v0.2.6 bezeichnet den ersten veröffentlichten
 Quellcode-Snapshot. Die nachträgliche Store-Anbindung und diese ausführliche
 Dokumentation stehen auf main. Der Tag wird dafür nicht nachträglich verschoben.
+
+## Änderungen in 0.4.6 – tatsächliche Displayhöhe, Musikübergabe und Verbindungsstatus
+
+- Die Videoausgabe folgt der tatsächlichen Vollbild-/Bedienfläche. Die
+  feste 504-Pixel-Höhe aus 0.4.5 erzeugte auf 1920×720 im Renderer erneut
+  je 108 Pixel Rand oben und unten. Dieser Fehler wurde im unveränderten
+  nativen Renderer mit tatsächlichen HLS-Frames reproduziert.
+- Die Oberfläche meldet die aktuelle Fläche an den Empfänger; die native
+  Skalierung passt beide Achsen an, ohne Inhalt zu beschneiden oder für
+  Größenwechsel die AirPlay-Verbindung neu zu starten.
+- Ein neuer eigenständiger Musiktransport kann ein laufendes oder ladendes
+  Video ablösen. Alter Spiegelungston darf diese Übergabe nicht übernehmen.
+- Ein tatsächlicher Sitzungsstatus steuert „Mit iPhone verbunden“ und
+  blendet den Kopplungscode aus. Ein reiner Verbindungsversuch oder eine
+  lokale Playlist-Anfrage gilt nicht als verbundene iPhone-Sitzung.
+- Die Bildprüfung umfasst jetzt den vollständigen Weg aus HLS-Dekodierung,
+  VideoBridge-Protokoll, nativer Renderer-Skalierung und finalem Framebuffer.
+- Die private App-Oberfläche zeichnet bis an den linken und oberen Rand.
+  Die zusätzliche Titel-/Statusleiste entfällt; die unteren Bedientasten
+  bleiben per Touch und iDrive erreichbar.
+
+App und Empfänger gemeinsam auf 0.4.6 aktualisieren. Die Abnahme am
+konkreten iPhone/Fahrzeug bleibt erforderlich.
 
 ## Änderungen in 0.4.5 – automatische Medienwahl und vollständiges Trennen
 

@@ -1,20 +1,28 @@
 'use strict';
 const EventEmitter = require('events'), net = require('net');
+function validVideoViewport(width, height) {
+    return Number.isInteger(width) && Number.isInteger(height) && width >= 16 && height >= 16 &&
+        width <= 2048 && height <= 2048 && !(width & 1) && !(height & 1) && width * height <= 2048 * 1080;
+}
 class BackendClient extends EventEmitter {
     constructor(socketPath) {
         super(); this.path = socketPath; this.socket = null; this.retry = null; this.timer = null; this.closed = false;
         this.stopRequest = null; this.requestSequence = 0;
-        this.state = { phase: 'stopped', profile: 'auto', mode: null, origin: null, supportsVideoStop: false, supportsAutomaticMedia: false, pin: '', frame: null, file: '', audio: true, error: null };
+        this.videoViewport = null;
+        this.viewportSocket = null; this.sentViewport = '';
+        this.state = { phase: 'stopped', profile: 'auto', mode: null, connected: false, supportsSessionStatus: false, origin: null, supportsVideoStop: false, supportsAutomaticMedia: false, pin: '', frame: null, file: '', audio: true, error: null };
     }
     update(s) { this.state = Object.assign({}, this.state, s); this.emit('state', this.state); }
     connect() {
         if (this.closed || this.socket) return;
         const s = net.createConnection(this.path); this.socket = s; s.setEncoding('utf8'); let pending = '';
         s.on('connect', () => {
-            if (this.closed) { s.end(); return; }
+            if (this.closed || this.socket !== s) { s.end(); return; }
             this.timer = setInterval(() => this.command('heartbeat'), 2000);
+            if (this.videoViewport) { this.command('heartbeat'); this.sendVideoViewport(); }
         });
         s.on('data', chunk => {
+            if (this.socket !== s || this.closed) return;
             pending += chunk;
             if (pending.length > 32768) { s.destroy(); return; }
             let at;
@@ -30,12 +38,14 @@ class BackendClient extends EventEmitter {
                 } catch (e) { s.destroy(); return; }
             }
         });
-        s.on('error', () => this.update({ phase: 'error', error: 'backend_unavailable', pin: '', frame: null }));
+        s.on('error', () => { if (this.socket === s) this.update({ phase: 'error', connected: false, error: 'backend_unavailable', pin: '', frame: null }); });
         s.on('close', () => {
             if (this.stopRequest && this.stopRequest.socket === s) this.finishStop('backend_unavailable');
+            if (this.socket !== s) return;
             clearInterval(this.timer); this.timer = null;
             if (this.socket === s) this.socket = null;
-            this.update({ phase: 'stopped', pin: '', frame: null, file: '' });
+            if (this.viewportSocket === s) { this.viewportSocket = null; this.sentViewport = ''; }
+            this.update({ phase: 'stopped', connected: false, pin: '', frame: null, file: '' });
             // The backend keeps the receiver alive for a grace period; reconnect
             // quickly so the running session resumes without a visible gap.
             if (!this.closed) this.retry = setTimeout(() => { this.retry = null; this.connect(); }, 500);
@@ -46,10 +56,35 @@ class BackendClient extends EventEmitter {
         try { this.socket.write(JSON.stringify(Object.assign({}, fields || {}, { command })) + '\n'); return true; }
         catch (e) { return false; }
     }
-    start(profile) {
+    start(profile, viewport) {
         profile = profile === undefined ? 'auto' : profile;
         if (profile !== 'auto' && profile !== 'video' && profile !== 'audio') return false;
-        return this.command('start', { profile });
+        if (viewport !== undefined) {
+            if (!viewport || !validVideoViewport(viewport.width, viewport.height)) return false;
+            this.videoViewport = { width: viewport.width, height: viewport.height };
+        }
+        const fields = { profile };
+        if (this.videoViewport) fields.viewport = this.videoViewport;
+        const sent = this.command('start', fields);
+        if (sent && this.videoViewport) {
+            this.viewportSocket = this.socket; this.sentViewport = this.videoViewport.width + ':' + this.videoViewport.height;
+        }
+        return sent;
+    }
+    sendVideoViewport() {
+        const viewport = this.videoViewport;
+        if (!viewport) return false;
+        const key = viewport.width + ':' + viewport.height;
+        if (this.viewportSocket === this.socket && this.sentViewport === key && this.socket &&
+            !this.socket.destroyed && !this.socket.connecting && !this.closed) return true;
+        const sent = this.command('video-viewport', viewport);
+        if (sent) { this.viewportSocket = this.socket; this.sentViewport = key; }
+        return sent;
+    }
+    setVideoViewport(width, height) {
+        if (!validVideoViewport(width, height) || this.closed) return false;
+        this.videoViewport = { width, height };
+        return this.sendVideoViewport();
     }
     musicControl(action, value) {
         const music = this.state.music;

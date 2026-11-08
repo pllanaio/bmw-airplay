@@ -1,5 +1,8 @@
 # Drittanbieter
 
+Der eigene Projektcode steht unter GPL-3.0-or-later; siehe LICENSE und
+LICENSE.md. Die folgenden Bestandteile behalten ihre gesonderten Bedingungen.
+
 - **UxPlay** — https://github.com/FDH2/UxPlay, Version 1.73.7,
   Commit df67c212a433cf6dda3676dd40c097900d24e645. GPL-3.0-or-later
   für die entsprechend gekennzeichneten Teile; einzelne Bibliotheksdateien
@@ -15,10 +18,13 @@
   separat installierte Build-Abhängigkeiten. Der Laufzeit-Builder übernimmt
   vorhandene Paket-Lizenzhinweise in die erzeugte private Laufzeit.
   Deren vollständige Quell- und Lizenzpflichten gelten bei Binärverteilung
-  zusätzlich; dieses Repository verteilt diese Laufzeitbinärdateien nicht.
+  zusätzlich. Die Release-Pakete enthalten die gebauten Laufzeitbibliotheken
+  und deren Lizenzhinweise; die Build-Skripte benennen die festgelegten
+  Upstream-Quellstände und beziehen diese beim Nachbau.
 - **idrive7-apps** — https://github.com/cauliflowermossgrape/idrive7-apps.
-  Externes App-Kit; nicht mit diesem Repository gebündelt. Die Integration
-  patcht nur eine lokale Build-Kopie des vom Benutzer bereitgestellten Kits.
+  Das externe App-Kit wird beim Build in einer privaten Kopie gepatcht.
+  Die App-Releases enthalten dessen Laufzeitcode mit LICENSE.idrive7-apps;
+  das proprietäre BMW-OAP-SDK bleibt ausgeschlossen.
 - **MGU-Store, robertnisipeanu, IterioDev und Mitwirkende** —
   https://github.com/robertnisipeanu/mgu-store.
   Rendering-, Uplink- und Deployment-Infrastruktur. Nicht hier gebündelt;

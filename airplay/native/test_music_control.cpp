@@ -27,7 +27,8 @@ int main() {
     unsigned char ipv6[16]; assert(inet_pton(AF_INET6, "fe80::1234", ipv6) == 1);
     mgu_music_control(NULL, &first, ipv6, 16, 3, "1", "2");
     assert(read(file).find("\"host\":\"fe80::1234%3\"") != std::string::npos);
-    mgu_music_control(NULL, &first, NULL, 0, 0, NULL, NULL);
+    mgu_music_control(NULL, NULL, NULL, 0, 0, NULL, NULL); /* Authenticated new selection, no inherited token. */
+    assert(access(file.c_str(), F_OK));
     assert(!chmod(directory, 0755));
     mgu_music_control(NULL, &first, ipv4, 4, 0, "1", "2"); assert(access(file.c_str(), F_OK));
     assert(!rmdir(directory));

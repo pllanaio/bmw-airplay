@@ -5,6 +5,7 @@ let receiver, route, accept, remote, uplinkOnline = false;
 class Receiver extends EventEmitter {
     constructor(options) { super(); receiver = this; this.runtime = options.runtime; this.musicDirectory = ''; this.options = options; this.state = {}; this.child = null; this.starts = 0; this.stops = 0; }
     start(options) { startupOrder.push('start'); this.child = {}; this.features = {}; this.starts++; this.lastOptions = options; const profile=options && options.profile || 'auto'; this.musicDirectory=profile!=='video'?'/private/music-'+this.starts:''; this.update({phase:'waiting', profile, mode:profile==='audio'?'audio':'waiting', music:profile!=='video'?{title:'',epoch:null,controls:{}}:null,error:null}); this.emit('music-directory',this.musicDirectory); return true; }
+    setVideoViewport(width,height) { this.viewport={width,height}; this.viewportUpdates=(this.viewportUpdates||0)+1; return true; }
     crash() { this.child = null; this.musicDirectory=''; this.emit('music-directory',''); this.update({phase:'error', mode:null, error:'receiver_failed'}); this.emit('ended'); }
     stop() { this.stops++; if (this.onStop) { const callback = this.onStop; this.onStop = null; callback(); } const finish=()=>{ this.child = null; this.musicDirectory=''; this.emit('music-directory',''); this.update({ phase:'stopped', mode:null }); this.emit('ended'); }; if (this.stopGate) { const gate=this.stopGate; this.stopGate=null; return gate.then(finish); } finish(); return Promise.resolve(); }
     update(fields) { Object.assign(this.state, fields); this.emit('state', this.state); }
@@ -33,7 +34,7 @@ let socketInode = 1, exitCode = null;
 const fakeFs = {existsSync:()=>true,lstatSync:()=>({isSocket:()=>true,uid:12233}),unlinkSync:()=>{},writeFileSync:()=>{},chmodSync:()=>{},
     statSync:p=>({dev:1,ino:/control\.sock$/.test(p)?socketInode:7,mtime:new Date(0)})};
 const modules = {
-    './resolver':{refresh:()=>startupOrder.push('dns'),hasUplink:()=>uplinkOnline},fs:fakeFs,path:require('path'),'./receiver':{Receiver},
+    './resolver':{refresh:()=>startupOrder.push('dns'),hasUplink:()=>uplinkOnline},fs:fakeFs,path:require('path'),'./receiver':{Receiver,validVideoViewport:require('../apps/pllana_airplay/receiver').validVideoViewport},
     './audio_route':{AudioRoute,AUDIO_SINK:'fakesink'},'./kit/signals':{},
     './music_controls':{MusicControls},
     net:{createServer:cb=>{accept=cb; return server;}}
@@ -50,7 +51,12 @@ const turn = () => new Promise(resolve=>setImmediate(resolve));
     s.setEncoding=()=>{}; s.write=data=>writes.push(JSON.parse(data));
     s.destroy=()=>{s.destroyed=true;s.emit('close');};
     accept(s);
-    s.emit('data','{"command":"start"}\n'); await turn();
+    s.emit('data','{"command":"start","viewport":{"width":1920,"height":720}}\n'); await turn();
+    assert.strictEqual(receiver.lastOptions.viewport.width,1920); assert.strictEqual(receiver.lastOptions.viewport.height,720,
+        'the initial canvas dimensions reach native launch before the first frame');
+    s.emit('data','{"command":"video-viewport","width":1600,"height":520}\n');
+    assert.strictEqual(receiver.viewport.width,1600); assert.strictEqual(receiver.viewport.height,520);
+    assert.strictEqual(receiver.starts,1,'opening controls updates the viewport without restarting the receiver');
     assert.strictEqual(receiver.options.hls(), false, 'offline backend selects mirroring');
     assert.deepStrictEqual(startupOrder.slice(-2), ['dns', 'start'], 'refresh DNS before the new receiver uses a newly appeared uplink');
     uplinkOnline = true;
@@ -97,6 +103,8 @@ const turn = () => new Promise(resolve=>setImmediate(resolve));
     fire(1000); await turn(); await turn();
     assert(receiver.child, 'crashed receiver restarts automatically');
     assert.strictEqual(receiver.lastOptions && receiver.lastOptions.keepPassword, true, 'restart keeps the password');
+    assert.strictEqual(receiver.lastOptions.viewport.width,1600); assert.strictEqual(receiver.lastOptions.viewport.height,520,
+        'automatic recovery preserves the current canvas size');
     receiver.crash(); await turn(); assert(scheduled.some(t => t.ms === 2000), 'second failure backs off');
     fire(2000); await turn(); await turn(); assert(receiver.child);
     // Frontend vanishes (stalled app, app manager restart): keep the session.
@@ -265,6 +273,13 @@ const turn = () => new Promise(resolve=>setImmediate(resolve));
     assert(writes.some(message=>message.reply && message.reply.id==='cleanup-timeout' && !message.reply.ok),
         'an unresponsive AudioManager returns a bounded failure without inventing a successful stop');
     route.release=originalRelease; finishStalledCleanup(); await turn();
+    finalUI.emit('data','{"command":"start","viewport":{"width":1920,"height":720}}\n{"command":"video-viewport","width":1920,"height":504}\n'); await turn();
+    assert.strictEqual(receiver.lastOptions.viewport.height,504,'a newer viewport in the same packet supersedes queued start dimensions');
+    const updatesBeforeStale=receiver.viewportUpdates;
+    s4.emit('data','{"command":"video-viewport","width":2048,"height":1080}\n');
+    assert.strictEqual(receiver.viewportUpdates,updatesBeforeStale,'a stale frontend cannot resize the current child');
+    finalUI.emit('data','{"command":"video-viewport","width":2048,"height":2048}\n');
+    assert(finalUI.destroyed,'the backend independently rejects excessive viewport pixel counts');
     // App update: the package manager moved our socket away with the old home.
     timers[1](); await turn(); assert.strictEqual(exitCode, null, 'unchanged socket keeps the backend running');
     socketInode = 2; timers[1](); await turn(); await turn();

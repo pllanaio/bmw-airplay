@@ -44,6 +44,11 @@ Die App-Dateien liegen in apps/pllana_airplay.
 Der sichtbare Name lautet durchgängig „BMW AirPlay by pllana.io“.
 Das OAP-Symbol hat 140×140 Pixel und passt in den BMW-Auswahlrahmen.
 Die Verbindungssicht ist auf 1600×520 logischen Pixeln aufgebaut.
+Im randlosen nativen Layout meldet `contentSize()` den vollständigen
+logischen Bereich über der unteren Bedienleiste, beispielsweise 1600×560
+auf 1920×720. Linke BMW-Spalte, obere Titel-/Statusleiste und transparente
+Ausschnitte dafür werden in der privaten SDK-Kopie weggelassen. Die
+untere Leiste, Seitenbedienung und iDrive-Zielzuordnung bleiben erhalten.
 Die native Präsentationsansicht verwendet die tatsächliche Displaygröße,
 einschließlich 1920×504 und 1920×720.
 
@@ -101,6 +106,9 @@ Der Zustand enthält getrennte Informationen:
 | frame/file | Aktuell freigegebener Frame und sein Transport |
 | audio/audioError | Eigene Audioverbindung und deren Verfügbarkeit |
 | music | Titel, Interpret, Album, privates Thumbnail und bestätigte Fernsteuerfähigkeiten/-zustände |
+| connected | Tatsächliche akzeptierte AirPlay-Sitzung; steuert Statusanzeige und Ausblenden des Codes |
+| supportsSessionStatus | Nativer Empfänger liefert eigene Sitzungsereignisse statt Rohverbindungszählung |
+| viewportError | Persistenter Fehler beim privaten Schreiben der angeforderten Videoabmessungen |
 | error | Bekannter Empfangs-/Medienfehler |
 
 phase=mirroring bezeichnet im aktuellen Code eine aktive Frame-Ausgabe;
@@ -172,7 +180,7 @@ GStreamer-Aufbau nicht aus, um hlsdemux2 zu vermeiden.
 Die HLS-Ausgabe nutzt:
 
 - Softwaredekodierung;
-- I420 mit 1920×504 Ausgabefläche;
+- I420 passend zur aktuell angeforderten Videofläche, standardmäßig 1920×720;
 - vollständige Skalierung auf die Zielfläche, bei Bedarf mit unterschiedlicher
   horizontaler/vertikaler Streckung, ohne Beschnitt oder zusätzliche Ränder;
 - fünf Sekunden Pufferdauer und acht MiB Pufferbudget;
@@ -203,6 +211,20 @@ Musikansicht. Akzeptierte Spiegelungs- oder HLS-Übergaben übernehmen die
 Bildausgabe; deren Audiopakete dürfen die Musikansicht nicht erneut öffnen.
 Eine bereits bestehende, gerade statische Spiegelung behält ihre Zuständigkeit.
 Der native Prozess und seine Kopplung werden beim Ansichtswechsel erhalten.
+
+Eine frische eigenständige Audio-SETUP-96-Übergabe darf auch einen aktiven
+oder noch ladenden HLS-Inhalt ablösen. Sie verwirft dessen Playlist-/Lade-
+Generation und verwendet den vorhandenen Renderer-Neuaufbau unter dem
+Playlist-Übergabeschutz. RAOP-Verbindung, Geräteidentität und Passwort
+bleiben bestehen. Bei erneutem SETUP auf demselben RTP-Transport werden
+Codec, Puffer und UDP-Ports neu ausgehandelt. Audio-, Flush- und Metadaten-
+Callbacks sind an den gewählten Transport gebunden; alte Transporte können
+die neue Musik nicht stummschalten oder deren Titel überschreiben.
+
+GStreamer-Quellen ohne BUFFERING-Nachrichten gelten nach aktuellem
+ASYNC_DONE-Preroll als bereit. Wiedergabe startet dabei nur, wenn sie
+angefordert ist. Explizite Pause, tatsächlich gemeldetes BUFFERING 0 und
+Nachrichten einer alten Generation bleiben wirksam.
 
 Das Backend hält erkannte Musikwiedergabe nach einem Verlust der Oberfläche
 aktiv; Frontend-Ende trennt dessen Socket, eine ausdrückliche Trennaktion den
@@ -238,13 +260,26 @@ zwei Titeln verfügbar und verwirft die ausstehende Fortsetzung. Die eigentliche
 Warteschlange und die Auswahl des nächsten Videos bleiben auf dem iPhone.
 [Bedienung und Fahrzeug-Testmatrix](PLAYLISTS.md).
 
-Die HLS-Pipeline skaliert ab 0.4.5 das vollständige Quellbild direkt auf
-1920×504 mit `videoconvertscale add-borders=false`. `aspectratiocrop` wird
-nicht verwendet. Die VideoBridge zoomt keine überstehende Fläche mehr
-unter einen Clip. Auf der passenden Zielfläche wird der vollständige
-skalierte Frame bildfüllend dargestellt; abweichende Layouts erhalten
-ebenfalls das ganze Bild. Für Bildschirmspiegelung bleibt die vollständige
-Aspect-Fit-Darstellung aktiv. Ein Renderer-Protokollwechsel ist nicht nötig.
+Die HLS-Pipeline skaliert ab 0.4.6 das vollständige Quellbild direkt auf
+die vom Frontend gemeldete Videofläche mit `videoconvertscale add-borders=false`.
+1920×720, 1920×504 und logische Bedienlayouts wie 1600×560 werden getrennt
+berücksichtigt. Die vorher feste 1920×504-Ausgabe wurde vom nativen
+OP19-Renderer auf höheren Flächen erneut mit Letterbox eingepasst.
+
+`start(profile, viewport)` und `video-viewport` übertragen validierte gerade
+Abmessungen zum Backend. Eine private, atomar ersetzte 0600-Datei enthält
+zwei Little-Endian-Uint32-Werte. Das native Filter liest sie vor der ersten
+Aushandlung und während laufender Videobuffer höchstens alle 100 ms.
+Ein neuer Capsfilter-Zielwert verhandelt die Ausgabe ohne Sitzungsneustart
+neu; alte Ausgangsabmessungen werden nicht mehr im neuen Layout angezeigt.
+Die Probe gibt alle Referenzen beim Filterabbau frei. Erlaubt sind gerade
+Kanten von 16 bis 2048 bei höchstens 2048×1080 Bildpunkten.
+
+`aspectratiocrop` und ein vergrößertes Ziel unter einem Clip werden nicht
+verwendet. Das an die Zielfläche angepasste Verhältnis verhindert zusätzliche
+Ränder im vorhandenen Renderer und erhält den vollständigen Bildinhalt.
+Für Bildschirmspiegelung bleibt die vollständige Aspect-Fit-Darstellung aktiv.
+Ein Renderer-Protokollwechsel ist nicht nötig.
 
 ## Frame-Transport
 
@@ -320,6 +355,11 @@ Repeat werden erst nach erfolgreicher Zustandsabfrage freigegeben; die
 Oberfläche übernimmt keine optimistisch gesetzten Werte. Zeitlimits,
 begrenzte Warteschlange und Sitzungsepochen verhindern, dass eine alte
 oder nicht antwortende Telefonverbindung das Stoppen blockiert.
+
+Eine ausgewählte neue SETUP-96-Audiositzung verwirft den bisherigen
+Steuerdeskriptor und seine Epoche. Erst frische gültige Zugangsdaten dieser
+Sitzung geben neue Befehle frei. Fehlende Daten übernehmen keine alten
+Steuerrechte eines anderen Titels, einer App oder eines Telefons.
 
 AirPlay-DMAP-Metadaten und JPEG-/PNG-Cover werden größenbegrenzt in einem
 privaten Sitzungsverzeichnis exportiert. Ein separater Decoder erzeugt

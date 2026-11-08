@@ -154,7 +154,7 @@ SDK-Donor und das festgelegte öffentliche Kit.
 - Rohprotokolle, vollständige URLs mit Tokens, Pairing-Daten und
   Fahrzeugidentifikatoren nicht in öffentliche Testberichte übernehmen.
 
-## Zusätzliche Prüfungen für 0.4.5
+## Zusätzliche Prüfungen für 0.4.6
 
 `test_lifecycle.sh` führt auch `test_audio_mode.cpp` (native Audiofähigkeiten,
 Flush/Teardown und kein Videopfad) sowie `test_audio_decode.py` aus. Letzterer
@@ -169,12 +169,40 @@ RAOP-/PTTH-/unvollständigen TCP-Verbindungen und echten RTP-UDP-Sockets;
 SIGTERM/SIGINT/SIGHUP müssen den Empfänger ohne Neustart beenden und die
 Ports freigeben.
 
+`test_audio_handoff.py` erzeugt echte HLS- und ALAC-Fixtures. Ein laufendes,
+tatsächlich dekodiertes Video wird durch einen geparsten RAOP-SETUP-96-
+Request abgelöst; verschlüsselte UDP-RTP-Pakete werden bis zur PCM-Ausgabe
+dekodiert. Derselbe Kontroll-/RTP-Transport, ein anderer ausgewählter
+Transport, noch ladende Videos, alte Flush-/Metadatenpakete und die
+anschließende Rückkehr zu Video gehören zum Test. Ein manueller Wechsel
+der HLS-Ownership-Variablen oder ein nur pausierter Preroll genügt nicht.
+
+`test_connection_status.c` prüft tatsächliche akzeptierte SETUP-/Play-
+Sitzungen, Pause/Teardown, gebundene Rückkanäle und abschließendes
+Disconnect. Pairing-/OPTIONS-Probes, fremde Peer-/UUID-Kombinationen und
+lokale HLS-GETs dürfen keinen verbundenen iPhone-Status erzeugen.
+
 `python3 airplay/tools/test_hls.py --stretch` prüft tatsächliche dekodierte
-1920×504-Pixel für 16:9, 21:9, 16:10, Hochformat, ein breiteres Format und
+an die Zielgröße angepasste Pixel für 16:9, 21:9, 16:10, Hochformat, ein breiteres Format und
 80:21. Vier unterschiedlich markierte Bildecken und ein asymmetrischer
 Farbverlauf müssen nach dem Dehnen/Stauchen erhalten bleiben. Die
 Bridge-Tests verbieten vergrößerte oder abgeschnittene Zielrechtecke.
 Die Referenz ist ein synthetisches Quellbild; künstliche Balken sind nicht erlaubt.
+
+`python3 airplay/tools/test_video_composite.py --store-root .store`
+prüft anschließend die tatsächliche vollständige Bildausgabe: echte
+HLS-Frames werden über VideoBridge und den unveränderten festgelegten
+mgu-render bis in dessen EGL-Framebuffer gerendert. Für 1920×720,
+1920×504 und 1600×520 werden alle Pixel auf zusätzliche leere Ränder
+sowie neun markierte Quellpunkte geprüft. 1600×560 als randlose Bedienfläche
+und Live-Größenwechsel in beide
+Richtungen gehören dazu. Eine 1920×504-Ausgabe in einem 1920×720-Viewport
+erzeugte im reproduzierten Vorher-Zustand exakt 108 leere Pixel oben und unten.
+Die CI verwendet dafür den VideoBridge-Code aus dem extrahierten App-Paket.
+
+Die Paket-Präsentationsprüfung prüft außerdem die private Display-Kopie:
+keine linke/obere BMW-Chrome-Fläche, vollständiger Body, erhaltene untere
+Bedienung und passende Touch-/iDrive-Koordinaten.
 
 Die iPhone-/Fahrzeugmatrix für Stop, beide Videomodi, reines Audio und die
 neue Bildfüllung steht in [MEDIA_MODES.md](MEDIA_MODES.md).

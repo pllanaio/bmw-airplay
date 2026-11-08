@@ -226,4 +226,22 @@ extern "C" void mgu_mirror_start(void *cls) {
             video_renderer_start();
             }, NULL);
         }''')
+    # Keep the production transition callable as one operation. Audio handoff
+    # regressions drive this exact path after a real parsed RAOP SETUP rather
+    # than simulating ownership by changing renderer globals in a test.
+    start = ux.index('''        if (use_audio) {
+            audio_renderer_stop();
+        }
+        if (use_video && (close_window || preserve_connections || full_video_reset)) {''')
+    end = ux.index('\n        if (reset_httpd) {', start)
+    rebuild = ux[start:end]
+    ux = ux[:start] + '        mgu_rebuild_media_renderers();' + ux[end:]
+    anchor = 'static void main_loop()  {'
+    ux = once(ux, anchor, '''static void mgu_rebuild_media_renderers(void) {
+    raop_playlist_control(raop, [](void *) {
+''' + rebuild + '''
+    }, NULL);
+}
+
+''' + anchor)
     return ux

@@ -32,7 +32,8 @@ jobs:
             ca-certificates git python3 nodejs build-essential cmake ninja-build pkg-config ffmpeg \
             libssl-dev libplist-dev libglib2.0-dev libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev \
             gstreamer1.0-tools gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-plugins-bad \
-            gstreamer1.0-libav gstreamer1.0-alsa gstreamer1.0-x libsoup-3.0-0 glib-networking file
+            gstreamer1.0-libav gstreamer1.0-alsa gstreamer1.0-x libsoup-3.0-0 glib-networking file \
+            libegl1-mesa-dev libgles2-mesa-dev libwayland-dev libwayland-bin libgl1-mesa-dri
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
           persist-credentials: false
@@ -114,6 +115,11 @@ jobs:
           persist-credentials: false
       - name: Validate packages with the Store deploy tool
         run: node test/store_package_check.js .store dist/pllana_airplay@${{ steps.version.outputs.version }}.tgz dist/pllana-airplay-receiver@${{ steps.version.outputs.version }}.tgz
+      - name: Check actual renderer fills video viewports without cropping
+        run: |
+          mkdir -p .build/airplay/composite-app
+          tar -xzf "dist/pllana_airplay@${{ steps.version.outputs.version }}.tgz" -C .build/airplay/composite-app
+          python3 airplay/tools/test_video_composite.py --store-root .store --app-root .build/airplay/composite-app/javascript
       - uses: actions/upload-artifact@v4
         with:
           name: store-packages

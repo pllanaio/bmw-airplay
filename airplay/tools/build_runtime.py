@@ -14,6 +14,7 @@ from patch_audio_mode import patch as patch_audio_mode
 from patch_audio_metadata import patch as patch_audio_metadata
 from patch_music_control import patch as patch_music_control
 from patch_shutdown import patch as patch_shutdown
+from patch_connection_status import patch as patch_connection_status
 
 ROOT = Path(__file__).resolve().parents[2]
 WORK = ROOT / '.local/airplay'
@@ -88,6 +89,7 @@ def main():
     ux_text, video_text = patch_audio_metadata(source, ux_text, video_text)
     ux_text = patch_music_control(source, ux_text)
     ux_text = patch_shutdown(source, ux_text)
+    ux_text = patch_connection_status(source, ux_text)
     for name in ['mgu_reverse.h', 'mgu_playlist.h']:
         shutil.copy2(ROOT / 'airplay/native' / name, source / 'lib' / name)
     shutil.copy2(ROOT / 'airplay/native/mgu_direct_play.h', source / 'lib/mgu_direct_play.h')
@@ -187,18 +189,19 @@ def main():
         executable.chmod(0o755)
     (RUNTIME / 'lib/ld-linux-x86-64.so.2').chmod(0o755)
     record = {
-        'format': 'mgu-airplay-runtime-v1', 'version': '0.4.5', 'architecture': 'x86_64',
+        'format': 'mgu-airplay-runtime-v1', 'version': '0.4.6', 'architecture': 'x86_64',
         'uxplay': {'version': '1.73.7', 'revision': UX_REV},
         'mdns_client': {'version': '765.20.4', 'revision': MDNS_REV, 'daemon': 'existing MGU mdnsd'},
         'source_patch': {'file': 'lib/CMakeLists.txt', 'sha256': sha(cmake)},
         'connection_events_patch_sha256': sha(ux_source),
         'hls_renderer_patch_sha256': sha(video_source),
-        'features': ['detach', 'native-detach', 'playlist', 'video-modes', 'media-stop', 'audio-only', 'auto-media', 'video-stretch', 'audio-metadata', 'music-control', 'full-disconnect'],
+        'features': ['detach', 'native-detach', 'playlist', 'video-modes', 'media-stop', 'audio-only', 'auto-media', 'audio-handoff', 'video-stretch', 'video-viewport', 'session-status', 'audio-metadata', 'music-control', 'full-disconnect'],
         'audio_profile_patch_sha256': sha(ROOT / 'airplay/tools/patch_audio_mode.py'),
         'audio_metadata_patch_sha256': sha(ROOT / 'airplay/tools/patch_audio_metadata.py'),
         'audio_metadata_sha256': sha(ROOT / 'airplay/native/mgu_audio_metadata.h'),
         'music_control_patch_sha256': sha(ROOT / 'airplay/tools/patch_music_control.py'),
         'shutdown_patch_sha256': sha(ROOT / 'airplay/tools/patch_shutdown.py'),
+        'session_status_patch_sha256': sha(ROOT / 'airplay/tools/patch_connection_status.py'),
         'music_control_sha256': sha(ROOT / 'airplay/native/mgu_music_control.h'),
         'dacp_resolver_sha256': sha(ROOT / 'airplay/native/mgu_dacp_resolve.c'),
         'hls_output_sha256': sha(ROOT / 'airplay/native/mgu_hls_output.h'),
@@ -208,7 +211,7 @@ def main():
         'reverse_sha256': sha(ROOT / 'airplay/native/mgu_reverse.h'),
         'hls_lifecycle_patches': {name: sha(source / name) for name in [
             'lib/raop.c', 'lib/raop.h', 'lib/raop_handlers.h', 'lib/http_handlers.h', 'lib/airplay_video.c',
-            'lib/raop_rtp_mirror.c', 'lib/httpd.c', 'lib/httpd.h', 'lib/http_response.c', 'lib/http_response.h',
+            'lib/raop_rtp.c', 'lib/raop_rtp_mirror.c', 'lib/httpd.c', 'lib/httpd.h', 'lib/http_response.c', 'lib/http_response.h',
             'lib/fcup_request.h', 'renderers/video_renderer.h', 'renderers/audio_renderer.c']},
         'drm_supported': False, 'hardware_qualified': False,
         'host_dependencies': ['existing mdnsd', 'OEM libasound.so.2 and SmartX plugin'],

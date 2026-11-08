@@ -135,6 +135,7 @@ def main():
         metadata_file = package / 'package.json'
         metadata = json.loads(metadata_file.read_text(encoding='utf8'))
         metadata['mguHmi'] = ['ID7']
+        metadata['license'] = 'GPL-3.0-or-later'
         # The receiver (UxPlay) runs under the app's own UID and needs the
         # uplink for YouTube/HLS; mgu-deploy grants it through this flag.
         metadata['mguInternet'] = True
@@ -142,6 +143,8 @@ def main():
         if args.release_package:
             shutil.rmtree(package / 'node_modules' / 'oap-sdk', ignore_errors=True)
         shutil.copyfile(work / 'LICENSE', package / 'javascript/kit/LICENSE.idrive7-apps')
+        for name in ['LICENSE', 'LICENSE.md', 'THIRD_PARTY_NOTICES.md']:
+            shutil.copyfile(ROOT / name, package / name)
         artifact = output / (args.app + '@' + args.version + '.tgz')
         # Reproducible archive: sorted members, root-owned, fixed mtime.
         with artifact.open('wb') as raw, gzip.GzipFile(fileobj=raw, filename='', mode='wb', mtime=0) as zipped, \

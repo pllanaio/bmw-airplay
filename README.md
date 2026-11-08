@@ -5,9 +5,11 @@
 Ein experimenteller, nativer AirPlay-Empfänger für BMW MGU / iDrive 7 von
 **[Leon Pllana IT-Solutions](https://pllana.io)**.
 
-**Quellstand:** App und native Laufzeit **0.4.5**.
-Die Änderungen in 0.4.5 sind lokal geprüft; die Fahrzeugabnahme steht aus.
+**Quellstand:** App und native Laufzeit **0.4.6**.
+Die Änderungen in 0.4.6 sind lokal geprüft; die Fahrzeugabnahme steht aus.
 Keine allgemeine Hardwarefreigabe und kein offizielles BMW- oder Apple-Produkt.
+
+**Lizenz:** [GPL-3.0-or-later](LICENSE.md), entsprechend Roberts mgu-store.
 
 **Der ausführliche Entwicklungsstand steht in [docs/STATUS.md](docs/STATUS.md):**
 Fahrzeugbestätigungen, lokale Testergebnisse, noch offene Fehler,
@@ -55,10 +57,19 @@ bestätigt. „Schließen“ wartet auf dieselbe Bestätigung; bei einem Fehler
 bleibt die Oberfläche für einen erneuten Versuch geöffnet.
 Die Sendersteuerung bleibt wirksam. [Bedienung, Protokollgrenzen und Tests](docs/MEDIA_MODES.md).
 
-Videos werden vollständig auf **1920 × 504** gedehnt beziehungsweise
-gestaucht. Der Empfänger schneidet keine Bildinhalte ab und fügt keine
-Balken hinzu; das Seitenverhältnis kann sich dabei ändern. Für die
+Videos werden vollständig auf die **tatsächlich genutzte Videofläche**
+gedehnt beziehungsweise gestaucht, etwa 1920 × 720 im Vollbild oder
+1920 × 504 auf einer entsprechend hohen Fläche. Der Empfänger schneidet
+keine Bildinhalte ab und vermeidet zusätzliche Ränder durch eine erneut
+seitenverhältnistreue Renderer-Anpassung. Das Seitenverhältnis kann sich
+dabei ändern. Für die
 Bildschirmspiegelung bleibt der ganze iPhone-Bildschirm sichtbar.
+
+Der Hauptbildschirm zeigt „Mit iPhone verbunden“, sobald eine tatsächliche
+AirPlay-Sitzung besteht. Der Kopplungscode wird dann ausgeblendet.
+„Empfang bereit“ bezeichnet einen gestarteten Empfänger ohne verbundene Sitzung.
+Der linke BMW-Rahmen und die obere Titel-/Statusleiste werden in der
+App-Darstellung verdeckt; die unteren Bedientasten bleiben erreichbar.
 
 ## Verwendung
 

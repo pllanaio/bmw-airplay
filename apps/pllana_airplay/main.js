@@ -19,6 +19,11 @@ mgu.run({ async start(ctx) {
     let state = receiver.state, notice = '', closing = false, controlsUntil = 0, diagnosis = '', diagnosedAt = 0;
     let mirrorResumeUntil = 0, disconnecting = null;
     const isAudio = next => next.mode === 'audio' || next.profile === 'audio';
+    const screenViewport = () => {
+        const screen = ctx.display.gpu && ctx.display.gpu.screen;
+        return screen && screen.w >= 16 && screen.h >= 16 ?
+            { width: screen.w, height: screen.h } : { width: 1920, height: 720 };
+    };
     const uid = process.getuid ? process.getuid() : 0;
     const unreachable = () => !receiver.socket || receiver.socket.connecting || receiver.socket.destroyed;
     ctx.display.onPresentationInput = () => {
@@ -36,7 +41,7 @@ mgu.run({ async start(ctx) {
     });
     ui.onClick('BTN_START', () => {
         if (disconnecting) return;
-        notice = receiver.start('auto') ? '' : (diagnose(uid) || 'Empfangsdienst startet noch. Bitte erneut versuchen.');
+        notice = receiver.start('auto', screenViewport()) ? '' : (diagnose(uid) || 'Empfangsdienst startet noch. Bitte erneut versuchen.');
     });
     ui.onClick('BTN_END_VIDEO', () => {
         if (state.mode === 'hls' || state.phase === 'loading' || state.playlistPending)
@@ -102,17 +107,22 @@ mgu.run({ async start(ctx) {
                 !state.playlistPending && Date.now() < mirrorResumeUntil));
         const fullscreen = !isAudio(state) && (!!state.frame || transitioning) && Date.now() >= controlsUntil && video.ready();
         ctx.display.setPresentation(fullscreen);
-        const size = fullscreen ? ctx.display.gpu.screen : { w: 1600, h: 520 };
+        const body = ctx.display.contentSize && ctx.display.contentSize();
+        const size = fullscreen ? ctx.display.gpu.screen : body || { w: 1600, h: 520 };
+        receiver.setVideoViewport(size.w, size.h);
+        // OP19 preserves aspect. Wait for the complete frame rescaled to the
+        // current canvas instead of displaying the previous layout's bars.
+        const resizing = !isAudio(state) && state.mode === 'hls' && state.frame &&
+            state.frame.width * size.h !== state.frame.height * size.w;
         const c = ctx.canvas(size.w, size.h);
-        if (!isAudio(state) && state.frame && video.attach(state.file, state.frame.generation)) {
+        if (!isAudio(state) && state.frame && !resizing && video.attach(state.file, state.frame.generation)) {
             c.clear('#000000');
-            // Native HLS frames already fit the full 1920x504 output through
-            // scaling. Keep the complete frame visible in every UI layout.
+            // The native output follows this exact viewport in both axes.
             video.draw(c, 0, 0, size.w, size.h, state.frame, state.mode === 'hls' ? 'stretch' : 'contain');
-        } else if (transitioning) {
+        } else if (transitioning || resizing) {
             c.clear('#000000');
             logo.draw(c, size.w / 2 - 32, size.h / 2 - 70, 64, 64);
-            c.text(state.phase === 'loading' ? 'Video wird geladen …' : 'Bildschirmspiegelung wird fortgesetzt …',
+            c.text(state.phase === 'loading' || resizing ? 'Video wird geladen …' : 'Bildschirmspiegelung wird fortgesetzt …',
                 size.w / 2, size.h / 2 + 32, 28, '#c0cedd', { font: 'airplay', align: 'center' });
         } else {
             // While the receiver service is unreachable, say why (every 2 s).
