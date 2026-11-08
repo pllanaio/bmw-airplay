@@ -107,7 +107,7 @@ Main-Senken zeigte den tatsächlich verwendeten Wert.
 ## CarPlay übernimmt Bild oder Medien
 
 CarPlay manuell im iDrive trennen und Hotspot/Uplink bestehen lassen.
-Danach den eigenen Empfänger „BMW AirPlay by pllana.io“ wählen.
+Danach den eigenen Empfänger „PllanaCast for BMW“ wählen.
 
 Die gewünschte parallele CarPlay-Sitzung benötigt eine bestätigte BMW-
 Fokusübergabe mit Eigentümer- und Prioritätsregeln. Dieser Vertrag liegt hier

@@ -1,5 +1,5 @@
 'use strict';
-// End-to-end check for the pllana Cast app (CI, Android emulator): runs the
+// End-to-end check for the PllanaCast for BMW app (CI, Android emulator): runs the
 // real CastReceiver (handshake, code check, framing) on the host and, instead
 // of the native decoder, a sink that records the H.264 stream and counts
 // frames. The emulator reaches the host as 10.0.2.2 (seen here as loopback).

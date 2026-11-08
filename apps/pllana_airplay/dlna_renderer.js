@@ -168,7 +168,7 @@ class DlnaRenderer extends EventEmitter {
         super();
         this.options = options || {};
         this.player = this.options.player;
-        this.name = this.options.name || 'BMW AirPlay by pllana.io';
+        this.name = this.options.name || 'PllanaCast for BMW';
         this.version = this.options.version || '0';
         this.port = this.options.port === undefined ? HTTP_PORT : this.options.port;
         this.ssdpPort = this.options.ssdpPort === undefined ? SSDP_PORT : this.options.ssdpPort;
@@ -291,7 +291,7 @@ class DlnaRenderer extends EventEmitter {
             [DEVICE, 'uuid:' + this.uuid + '::' + DEVICE]].concat(Object.keys(SERVICES).map(k => [SERVICES[k], 'uuid:' + this.uuid + '::' + SERVICES[k]]))
             .concat(this.options.castPort ? [[CAST_DEVICE, 'uuid:' + this.uuid + '::' + CAST_DEVICE]] : []);
     }
-    // The pllana Cast app finds the screen receiver through the same SSDP.
+    // The PllanaCast for BMW app finds the screen receiver through the same SSDP.
     castHeaders() { return this.options.castPort ? ['X-PLLANA-CAST: ' + this.options.castPort, 'X-PLLANA-NAME: ' + this.name] : []; }
     location(address) { return 'http://' + address + ':' + this.port + '/dlna/description.xml'; }
     server_header() { return 'Linux/4.14 UPnP/1.0 pllana-airplay/' + this.version; }

@@ -1,5 +1,5 @@
 'use strict';
-// Receiver for the pllana Cast Android app: the phone's screen (H.264) and
+// Receiver for the PllanaCast for BMW Android app: the phone's screen (H.264) and
 // sound (PCM) over the local WLAN or the phone hotspot, for Android phones
 // without Miracast/DLNA mirroring (e.g. Pixel, where "Cast" is Google Cast).
 //
@@ -35,7 +35,7 @@ class CastReceiver extends EventEmitter {
         this.dataDir = this.options.dataDir;
         this.port = this.options.port === undefined ? PORT : this.options.port;
         this.code = this.options.code || (() => '');
-        this.name = this.options.name || 'BMW AirPlay by pllana.io';
+        this.name = this.options.name || 'PllanaCast for BMW';
         this.server = null; this.running = false; this.session = null; this.serial = 0; this.failures = new Map();
     }
     available() {

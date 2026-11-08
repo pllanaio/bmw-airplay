@@ -60,7 +60,7 @@ final class ScreenEncoder {
         int[] size = target(sourceWidth, sourceHeight);
         width = size[0]; height = size[1];
         openCodec();
-        display = projection.createVirtualDisplay("pllana Cast", width, height, densityDpi,
+        display = projection.createVirtualDisplay("PllanaCast for BMW", width, height, densityDpi,
                 DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR, surface, null, null);
         startDrain();
         kickFirstFrame();

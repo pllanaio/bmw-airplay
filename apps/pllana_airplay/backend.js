@@ -23,7 +23,7 @@ const receiver = new Receiver({ dataDir: data, runtime: process.env.MGU_AIRPLAY_
 const { MediaPlayer } = require('./media_player');
 const { DlnaRenderer } = require('./dlna_renderer');
 const player = new MediaPlayer({ runtime: receiver.runtime, dataDir: data, audioSink: AUDIO_SINK });
-// pllana Cast app (e.g. Pixel phones, whose system "Cast" is Google Cast):
+// PllanaCast for BMW app (e.g. Pixel phones, whose system "Cast" is Google Cast):
 // screen and sound, authenticated with the code shown in the car.
 const { CastReceiver, PORT: CAST_PORT } = require('./cast_receiver');
 const screenCast = new CastReceiver({ runtime: receiver.runtime, dataDir: data, audioSink: AUDIO_SINK, code: () => receiver.state.pin || receiver.lastPassword });

@@ -12,7 +12,7 @@ function readJson(io, file) {
 function diagnose(uid, io) {
     io = io || fs;
     const receiver = readJson(io, RECEIVER), old = readJson(io, OLD), status = readJson(io, STATUS);
-    if (!receiver && !old) return 'AirPlay-Empfänger fehlt: im Store „AirPlay receiver“ über Quelle „Releases“ installieren.';
+    if (!receiver && !old) return 'AirPlay-Empfänger fehlt: im Store „PllanaCast for BMW Empfänger“ über Quelle „Releases“ installieren.';
     if (receiver && status && typeof status.state === 'string') {
         const other = Number.isInteger(status.uid) && status.uid !== uid;
         switch (status.state) {
@@ -29,8 +29,8 @@ function diagnose(uid, io) {
     if (receiver) return 'Empfangsdienst startet … (noch kein Status)';
     const bound = /UID (\d+)/.exec(String(old.description || ''));
     if (bound && Number(bound[1]) !== uid)
-        return 'Alte AirPlay-Laufzeit gehört zu UID ' + bound[1] + ' (App: ' + uid + '). „AirPlay receiver“ über „Releases“ installieren.';
-    return 'Alte AirPlay-Laufzeit ' + (old.version || '') + ' antwortet nicht. „AirPlay receiver“ über „Releases“ installieren.';
+        return 'Alte AirPlay-Laufzeit gehört zu UID ' + bound[1] + ' (App: ' + uid + '). „PllanaCast for BMW Empfänger“ über „Releases“ installieren.';
+    return 'Alte AirPlay-Laufzeit ' + (old.version || '') + ' antwortet nicht. „PllanaCast for BMW Empfänger“ über „Releases“ installieren.';
 }
 // Miracast pre-check written by the receiver runtime (p2p_probe.js).
 const P2P = '/run/pllana-airplay/p2p.json';

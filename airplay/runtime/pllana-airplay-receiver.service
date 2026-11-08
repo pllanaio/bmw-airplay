@@ -1,5 +1,5 @@
 [Unit]
-Description=BMW AirPlay by pllana.io receiver (Store runtime)
+Description=PllanaCast for BMW receiver (Store runtime)
 After=persistency-fs.target alsaroutingadapters.service mdnsd.service mgu-uplink.service
 Wants=persistency-fs.target
 Conflicts=mgu-airplay.service

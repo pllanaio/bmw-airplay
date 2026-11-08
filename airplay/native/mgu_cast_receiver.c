@@ -1,4 +1,4 @@
-/* Android screen cast sink for the pllana Cast app, GPL-3.0-or-later.
+/* Android screen cast sink for the PllanaCast for BMW app, GPL-3.0-or-later.
  *
  * The backend accepts and authenticates the phone's TCP connection and pipes
  * the remaining byte stream to stdin. This process never touches the

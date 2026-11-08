@@ -2,7 +2,7 @@
 
 Copyright (C) 2026 Leon Pllana IT-Solutions.
 
-BMW AirPlay by pllana.io wird unter **GNU General Public License,
+PllanaCast for BMW wird unter **GNU General Public License,
 Version 3 oder einer späteren Version (GPL-3.0-or-later)** veröffentlicht.
 Dies entspricht der Projektlizenz von
 [Roberts mgu-store](https://github.com/robertnisipeanu/mgu-store).

@@ -160,7 +160,7 @@ class Receiver extends EventEmitter {
         const directVideo = profile !== 'audio' && (typeof this.options.hls === 'function' ? this.options.hls() : this.options.hls !== false);
         const access = passwordMode ? ['-pw', pin] : ['-pin', pin, '-reg', register];
         const args = [loader, '--library-path', path.join(this.runtime, 'lib'), uxplay,
-            '-n', 'BMW AirPlay by pllana.io', '-nh', '-m', device].concat(access)
+            '-n', 'PllanaCast for BMW', '-nh', '-m', device].concat(access)
             .concat(profile !== 'audio' ? ['-s', '1280x720@30', '-fps', '30', '-avdec'] : [])
             .concat(directVideo ? ['-hls', '2', '-lang', '0'] : [])
             .concat(['-vs', profile === 'audio' ? '0' : 'mguvideosink location=' + file, '-as', audio, '-p', '7100']);

@@ -53,8 +53,8 @@ def main():
     unit = (ROOT / 'airplay/runtime' / UNIT).read_bytes()
     component = {
         'id': TOOL, 'kind': 'tool', 'version': args.version,
-        'title': 'BMW AirPlay receiver runtime',
-        'description': 'UxPlay receiver with GStreamer video/HLS and SmartX audio for BMW AirPlay by pllana.io',
+        'title': 'PllanaCast for BMW receiver runtime',
+        'description': 'UxPlay receiver with GStreamer video/HLS and SmartX audio for PllanaCast for BMW',
         'mguHmi': ['ID7'], 'uninstallable': True,
         'requires': {'mgu-deploy': '0.7.17'},
         # Take over from (and on removal give back to) the older private

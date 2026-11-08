@@ -1,6 +1,6 @@
 <img src="airplay/branding/pllana-airplay-logo.png" alt="pllana.io AirPlay logo" width="140">
 
-# BMW AirPlay by pllana.io
+# PllanaCast for BMW
 
 Ein experimenteller, nativer AirPlay-Empfänger für BMW MGU / iDrive 7 von
 **[Leon Pllana IT-Solutions](https://pllana.io)**.
@@ -25,7 +25,7 @@ App und native Laufzeit müssen gemeinsam aktualisiert werden.
 - iPhone-Bildschirmspiegelung mit Ton über die BMW-Lautsprecher.
 - **Android** (ab 0.5.0): Videos, Musik und Fotos per „Streamen auf“ (DLNA/UPnP),
   z. B. aus Samsung Galerie, BubbleUPnP, Web Video Caster oder VLC; siehe [docs/ANDROID.md](docs/ANDROID.md).
-- **pllana Cast** (ab 0.6.0): eigene Android-App überträgt den ganzen Bildschirm mit Ton,
+- **PllanaCast for BMW** (ab 0.6.0): eigene Android-App überträgt den ganzen Bildschirm mit Ton,
   auch vom Pixel; APK im Release, Quellcode in `android/`.
 - YouTube per direkter AirPlay-/HLS-Wiedergabe; das iPhone bleibt parallel bedienbar.
 - Am Entwicklungsfahrzeug bestätigt: Spiegelung → Video → Spiegelung sowie
@@ -85,7 +85,7 @@ App-Darstellung verdeckt; die unteren Bedientasten bleiben erreichbar.
 2. Eine parallele CarPlay-Sitzung wird von der App nicht beendet. Automatische
    Fokusübergabe und nahtloses Umschalten mit CarPlay sind noch offen. Falls
    CarPlay die Wiedergabe übernimmt, muss es vorerst im iDrive getrennt werden.
-3. Auf der MGU „BMW AirPlay by pllana.io“ öffnen und „Verbinden“ drücken.
+3. Auf der MGU „PllanaCast for BMW“ öffnen und „Verbinden“ drücken.
 4. Am iPhone denselben Empfänger unter „Bildschirmsynchronisierung“ oder direkt
    im AirPlay-Menü von YouTube auswählen und gegebenenfalls den Code eingeben.
 5. Ein aus der Spiegelung gestartetes AirPlay-Video läuft im eigenen Medienpfad.

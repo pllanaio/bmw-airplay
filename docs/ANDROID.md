@@ -1,6 +1,6 @@
-# Android-Streaming (ab 0.5.0, pllana Cast ab 0.6.0)
+# Android-Streaming (ab 0.5.0, PllanaCast for BMW ab 0.6.0)
 
-BMW AirPlay by pllana.io empfängt neben dem iPhone (AirPlay) auch Android-
+PllanaCast for BMW empfängt neben dem iPhone (AirPlay) auch Android-
 Handys. Beides läuft in derselben App, über denselben Video- und Tonweg zum
 iDrive-Display und zu den BMW-Lautsprechern.
 
@@ -9,7 +9,7 @@ iDrive-Display und zu den BMW-Lautsprechern.
 | Weg | Status | Typische Apps |
 | --- | --- | --- |
 | **DLNA/UPnP-Renderer** („Streamen auf …“, „Wiedergabe auf Gerät“) | ab 0.5.0 | Samsung Galerie und Musik, BubbleUPnP, Web Video Caster, VLC, Plex/Jellyfin/Kodi-Clients, Mediatheken-Apps mit DLNA |
-| **pllana Cast** (eigene App, Bildschirm + Ton) | ab 0.6.0 | jedes Android ab 10, z. B. **Pixel** (dessen „Übertragen“ ist Google Cast) und Samsung |
+| **PllanaCast for BMW** (eigene App, Bildschirm + Ton) | ab 0.6.0 | jedes Android ab 10, z. B. **Pixel** (dessen „Übertragen“ ist Google Cast) und Samsung |
 | AirPlay-Sender-Apps auf Android | bereits mit AirPlay | z. B. AirScreen-/AllCast-artige Apps, die an AirPlay-Empfänger senden |
 | **Miracast / Samsung Smart View** (Bildschirmspiegelung) | in Vorbereitung | Systemfunktion „Smart View“ bzw. „Bildschirm übertragen“ |
 | Google Cast / Chromecast | nicht möglich | Google verlangt eine Geräte-Zertifizierung; ein freier Empfänger wird von Android und YouTube nicht angenommen |
@@ -17,11 +17,11 @@ iDrive-Display und zu den BMW-Lautsprechern.
 ## Bedienung
 
 1. In der App „Verbinden“ drücken. Ab jetzt ist der Empfänger als
-   **BMW AirPlay by pllana.io** im Netz sichtbar, für AirPlay und DLNA.
+   **PllanaCast for BMW** im Netz sichtbar, für AirPlay und DLNA.
 2. Das Android-Handy ist im BMW-WLAN, oder die HeadUnit hängt über mgu-uplink
    am Hotspot des Handys.
 3. In der Android-App „Streamen auf“, „Wiedergabe auf“ oder das Cast-/DLNA-
-   Symbol antippen und **BMW AirPlay by pllana.io** wählen.
+   Symbol antippen und **PllanaCast for BMW** wählen.
 
 Videos laufen im Vollbild, Musik zeigt Titel/Interpret/Album in der Musik-
 ansicht. „Play/Pause“ und „Weiter“ (bei einer Wiedergabeliste) bedienen die
@@ -33,11 +33,11 @@ Das Handy liefert nur die Adresse des Inhalts. Die HeadUnit lädt Video oder
 Musik selbst: vom Handy (lokale Dateien) oder aus dem Internet über den
 Uplink. Das Handy kann währenddessen frei benutzt werden.
 
-## pllana Cast: den ganzen Bildschirm übertragen (ab 0.6.0)
+## PllanaCast for BMW: den ganzen Bildschirm übertragen (ab 0.6.0)
 
 Pixel-Handys übertragen über das System nur per Google Cast, und das lässt
 Google nur auf zertifizierten Geräten zu. Dafür gibt es die eigene App
-**pllana Cast** (Quellcode in `android/`).
+**PllanaCast for BMW** (Quellcode in `android/`).
 
 **Installation:** Auf GitHub unter *Releases* die Datei
 `pllana-cast-<Version>.apk` am Handy herunterladen und öffnen. Android fragt
@@ -48,7 +48,7 @@ einmalig, ob der Browser Apps installieren darf.
 1. Im Auto in der AirPlay-App „Verbinden“ drücken. Das Display zeigt den
    6-stelligen Code.
 2. Das Handy ist im BMW-WLAN, oder die HeadUnit hängt am Hotspot des Handys.
-3. pllana Cast öffnen. Die App sucht den BMW automatisch; alternativ die
+3. PllanaCast for BMW öffnen. Die App sucht den BMW automatisch; alternativ die
    Adresse eintragen.
 4. Code eingeben und „Übertragung starten“ wählen. Android fragt, ob der
    ganze Bildschirm oder nur eine App geteilt werden soll.
@@ -95,7 +95,7 @@ base64 -w0 pllana-cast.jks   # Inhalt als Secret PLLANA_CAST_KEYSTORE_BASE64 spe
 - Formate: MP4/M4V/MOV, MKV/WebM, MPEG-TS, AVI, HLS; MP3 (mit ID3), AAC/M4A,
   FLAC, WAV, OGG/Opus; JPEG/PNG. Video mit H.264, H.265, VP8/VP9, MPEG-2/4
   (Software-Dekodierung).
-- Netz: TCP 7103 (DLNA-Steuerung), TCP 7104 (pllana Cast), UDP 1900 (SSDP), nur auf `wlan_bridge`,
+- Netz: TCP 7103 (DLNA-Steuerung), TCP 7104 (PllanaCast for BMW), UDP 1900 (SSDP), nur auf `wlan_bridge`,
   `wlan0`, `wlan1` und nur für private IPv4-Adressen. Ereignis-Rückrufe gehen
   ausschließlich an die Adresse des abonnierenden Handys. Die Firewall-Regeln
   setzt die Laufzeit (`airplay/network.js`) wie die AirPlay-Regeln.

@@ -1,4 +1,4 @@
-name: pllana Cast end to end (Android emulator)
+name: PllanaCast for BMW end to end (Android emulator)
 
 # Installs the real app in an Android 15 emulator, casts the emulator screen
 # to the real CastReceiver on the runner and checks that decodable H.264

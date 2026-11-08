@@ -1,4 +1,4 @@
-# BMW AirPlay by pllana.io
+# PllanaCast for BMW
 
 Native MGU/iDrive7 receiver by **Leon Pllana IT-Solutions · [pllana.io](https://pllana.io)**.
 
@@ -8,8 +8,8 @@ and Store integration are documented separately.
 
 ## Use
 
-1. Open **BMW AirPlay by pllana.io** on the MGU, select **Verbinden**.
-2. For screen mirroring, select **BMW AirPlay by pllana.io** in the iPhone Control Centre's
+1. Open **PllanaCast for BMW** on the MGU, select **Verbinden**.
+2. For screen mirroring, select **PllanaCast for BMW** in the iPhone Control Centre's
    screen mirroring menu. Enter the six-digit code shown by the MGU.
 3. For YouTube HLS, select the AirPlay destination from the YouTube app's
    playback/casting menu. This is a separate playback mode: the receiver fetches

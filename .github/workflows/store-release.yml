@@ -142,7 +142,7 @@ jobs:
           if-no-files-found: error
 
   android:
-    # pllana Cast: Android sender app for phones whose system "Cast" is
+    # PllanaCast for BMW: Android sender app for phones whose system "Cast" is
     # Google Cast (e.g. Pixel). The runner image ships the Android SDK.
     runs-on: ubuntu-24.04
     timeout-minutes: 30
@@ -210,11 +210,11 @@ jobs:
             echo "v$VERSION is already published; release assets are never replaced."
           else
             gh release create "v$VERSION" --repo "$REPO" --target "$GITHUB_SHA" \
-              --title "BMW AirPlay by pllana.io $VERSION" \
+              --title "PllanaCast for BMW $VERSION" \
               --notes "Store packages: app pllana_airplay $VERSION and receiver pllana-airplay-receiver $VERSION. Add pllanaio/bmw-airplay in MGU Store and choose Releases. Android: install pllana-cast-$VERSION.apk on the phone (see docs/ANDROID.md)." \
               dist/pllana_airplay@$VERSION.tgz dist/pllana-airplay-receiver@$VERSION.tgz dist/SHA256SUMS dist/pllana-cast-$VERSION.apk
             if ! gh release view catalog --repo "$REPO" > /dev/null 2>&1; then
-              gh release create catalog --repo "$REPO" --target "$GITHUB_SHA" --title "BMW AirPlay Store catalog" \
+              gh release create catalog --repo "$REPO" --target "$GITHUB_SHA" --title "PllanaCast for BMW Store catalog" \
                 --notes "Store catalog for pllanaio/bmw-airplay. Choose Releases in MGU Store."
             fi
             gh release upload catalog dist/catalog.json --repo "$REPO" --clobber

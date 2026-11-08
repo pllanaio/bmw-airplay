@@ -13,7 +13,7 @@ noch mit dem konkreten iPhone/iOS-Stand am Fahrzeug zu prüfen.
    wird, „Kompatibilität maximieren“ einschalten.
 2. Im MGU Store den WLAN-Uplink mit diesem Hotspot verbinden. Der Uplink
    muss eine gültige Adresse und DNS-Server erhalten.
-3. App und „AirPlay receiver“ gemeinsam auf 0.4.7 aktualisieren. In der App
+3. App und „PllanaCast for BMW Empfänger“ gemeinsam auf 0.4.7 aktualisieren. In der App
    „Verbinden“ drücken und den Empfänger am iPhone unter AirPlay bzw.
    „Bildschirmsynchronisierung“ auswählen.
 4. Ein direkt gestartetes YouTube-/HLS-Video lädt die HeadUnit über den
