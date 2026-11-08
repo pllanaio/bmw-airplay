@@ -1,0 +1,52 @@
+plugins {
+    id 'com.android.application'
+}
+
+// Version follows the BMW AirPlay app it talks to (apps/pllana_airplay/app.json).
+def appJson = new groovy.json.JsonSlurper().parse(file('../../apps/pllana_airplay/app.json'))
+def parts = appJson.version.tokenize('.').collect { it as int }
+
+android {
+    namespace 'io.pllana.cast'
+    compileSdk 35
+
+    defaultConfig {
+        applicationId 'io.pllana.cast'
+        minSdk 29
+        targetSdk 35
+        versionCode parts[0] * 10000 + parts[1] * 100 + parts[2]
+        versionName appJson.version
+    }
+
+    signingConfigs {
+        // Stable release key from CI secrets when present (updates keep
+        // working); otherwise the build falls back to the debug key.
+        release {
+            def store = System.getenv('PLLANA_CAST_KEYSTORE')
+            if (store && file(store).exists()) {
+                storeFile file(store)
+                storePassword System.getenv('PLLANA_CAST_KEYSTORE_PASSWORD')
+                keyAlias System.getenv('PLLANA_CAST_KEY_ALIAS') ?: 'pllana-cast'
+                keyPassword System.getenv('PLLANA_CAST_KEY_PASSWORD') ?: System.getenv('PLLANA_CAST_KEYSTORE_PASSWORD')
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            def store = System.getenv('PLLANA_CAST_KEYSTORE')
+            signingConfig (store && file(store).exists()) ? signingConfigs.release : signingConfigs.debug
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    lint {
+        abortOnError false
+        checkReleaseBuilds false
+    }
+}

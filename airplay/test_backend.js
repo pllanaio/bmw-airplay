@@ -1,7 +1,7 @@
 'use strict';
 const assert = require('assert'), vm = require('vm'), fs = require('fs'), EventEmitter = require('events');
 const sockets = [], writes = [], timers = [], startupOrder = [], reports = [], persisted = [];
-let receiver, route, accept, remote, player, dlna, uplinkOnline = false;
+let receiver, route, accept, remote, player, dlna, screen, uplinkOnline = false;
 class Receiver extends EventEmitter {
     constructor(options) { super(); receiver = this; this.runtime = options.runtime; this.musicDirectory = ''; this.options = options; this.state = {}; this.child = null; this.starts = 0; this.stops = 0; }
     start(options) { startupOrder.push('start'); this.child = {}; this.features = {}; this.starts++; this.lastOptions = options; const profile=options && options.profile || 'auto'; this.musicDirectory='/private/music-'+this.starts; this.update({phase:'waiting', profile, mode:profile==='audio'?'audio':'waiting', connected:false,playlistPending:false,returnMode:'waiting',frame:null,music:{title:'',epoch:null,controls:{}},error:null}); this.emit('music-directory',this.musicDirectory); return true; }
@@ -38,6 +38,9 @@ const modules = {
     './audio_route':{AudioRoute,AUDIO_SINK:'fakesink'},'./kit/signals':{},
     './music_controls':{MusicControls},
     './media_player':{MediaPlayer:class extends EventEmitter{constructor(o){super();player=this;this.options=o;this.state={state:'stopped'};this.closed=0;}setViewport(w,h){this.viewport={width:w,height:h};return true;}close(){this.closed++;return Promise.resolve();}stop(){}}},
+    './cast_receiver':{PORT:7104,CastReceiver:class extends EventEmitter{constructor(o){super();screen=this;this.options=o;this.running=false;this.mirror=null;this.ended=0;}
+        start(){this.running=true;return Promise.resolve();}stop(){this.running=false;this.mirror=null;return Promise.resolve();}
+        presentation(){return this.running?this.mirror:null;}set(m){this.mirror=m;this.emit('state',m);}stopSession(){this.ended++;this.set(null);return Promise.resolve();}}},
     './dlna_renderer':{DlnaRenderer:class extends EventEmitter{constructor(o){super();dlna=this;this.options=o;this.running=false;this.cast=null;this.starts=0;this.stops=0;this.actions=[];}
         start(){this.running=true;this.starts++;return Promise.resolve();}stop(){this.running=false;this.stops++;this.cast=null;return Promise.resolve();}
         presentation(){return this.running?this.cast:null;}set(cast){this.cast=cast;this.emit('state',cast);}
@@ -147,6 +150,19 @@ const turn = () => new Promise(resolve=>setImmediate(resolve));
     assert.deepStrictEqual(dlna.actions,['stop','toggle','next'],'BMW music buttons control Android music; stale epochs are ignored');
     assert.strictEqual(remote.actions.length,0,'Android music never reaches the iPhone remote');
     dlna.set(null);
+    // pllana Cast (Android screen): authenticated with the code on the display.
+    assert.strictEqual(screen.running,true,'the screen receiver runs with reception');
+    assert.strictEqual(screen.options.code(),receiver.state.pin||receiver.lastPassword);
+    assert.strictEqual(dlna.options.castPort,7104,'SSDP advertises the screen receiver');
+    route.release();
+    screen.set({device:'Pixel 9',frame:{width:1280,height:576,sequence:4,generation:'1:7'},file:'/dev/shm/mgu-video-cast-1',audio:true,error:null});
+    await turn(); await turn();
+    shown=writes[writes.length-1].state;
+    assert.strictEqual(shown.mode,'mirror'); assert.strictEqual(shown.sender,'android'); assert.strictEqual(shown.file,'/dev/shm/mgu-video-cast-1');
+    assert(route.owned,'the Android screen sound gets the BMW audio route');
+    s.emit('data','{"command":"end-video"}\n'); await turn();
+    assert.strictEqual(screen.ended,1,'Video beenden ends the Android screen session');
+    assert.strictEqual(writes[writes.length-1].state.sender,undefined);
     // Native receiver crash: automatic restart with the known password.
     receiver.crash(); await turn();
     assert.strictEqual(receiver.state.phase, 'recovering');

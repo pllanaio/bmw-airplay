@@ -135,6 +135,10 @@ def main():
     gst_flags = subprocess.check_output(['pkg-config', '--cflags', '--libs', 'gstreamer-1.0', 'gio-2.0'], text=True).split()
     run(['gcc', '-O2', '-march=x86-64', '-mtune=generic', '-Wall', '-Wextra', '-Werror', '-I', ROOT / 'airplay/native',
          ROOT / 'airplay/native/mgu_media_player.c', '-o', RUNTIME / 'bin/mgu-media-player'] + gst_flags + ['-lm'])
+    # pllana Cast (Android screen) sink: framed H.264/PCM from stdin.
+    app_flags = subprocess.check_output(['pkg-config', '--cflags', '--libs', 'gstreamer-1.0', 'gstreamer-app-1.0'], text=True).split()
+    run(['gcc', '-O2', '-march=x86-64', '-mtune=generic', '-Wall', '-Wextra', '-Werror',
+         ROOT / 'airplay/native/mgu_cast_receiver.c', '-o', RUNTIME / 'bin/mgu-cast-receiver'] + app_flags)
     shutil.copy2(BUILD / 'uxplay-build/uxplay', RUNTIME / 'bin/uxplay')
     shutil.copy2(dns, RUNTIME / 'lib/libdns_sd.so')
     # Mirroring and YouTube HLS; no system plugin discovery on the target.
@@ -161,7 +165,7 @@ def main():
     tls = Path('/usr/lib/x86_64-linux-gnu/gio/modules/libgiognutls.so')
     shutil.copy2(tls, RUNTIME / 'gio' / tls.name)
     shutil.copy2('/etc/ssl/certs/ca-certificates.crt', RUNTIME / 'etc/ca-certificates.crt')
-    roots = list((RUNTIME / 'plugins').glob('*.so')) + [RUNTIME / 'bin/uxplay', RUNTIME / 'bin/gst-launch-1.0', RUNTIME / 'bin/mgu-media-player', RUNTIME / 'bin/iw',
+    roots = list((RUNTIME / 'plugins').glob('*.so')) + [RUNTIME / 'bin/uxplay', RUNTIME / 'bin/gst-launch-1.0', RUNTIME / 'bin/mgu-media-player', RUNTIME / 'bin/mgu-cast-receiver', RUNTIME / 'bin/iw',
             RUNTIME / 'bin/mgu-dacp-resolve', dns, soup, tls]
     # Native SmartX plugins load these at runtime. Do not mix the HU's glibc 2.27
     # internals (notably libdl/libpthread) into the private glibc runtime.
@@ -201,13 +205,13 @@ def main():
         executable.chmod(0o755)
     (RUNTIME / 'lib/ld-linux-x86-64.so.2').chmod(0o755)
     record = {
-        'format': 'mgu-airplay-runtime-v1', 'version': '0.5.1', 'architecture': 'x86_64',
+        'format': 'mgu-airplay-runtime-v1', 'version': '0.6.0', 'architecture': 'x86_64',
         'uxplay': {'version': '1.73.7', 'revision': UX_REV},
         'mdns_client': {'version': '765.20.4', 'revision': MDNS_REV, 'daemon': 'existing MGU mdnsd'},
         'source_patch': {'file': 'lib/CMakeLists.txt', 'sha256': sha(cmake)},
         'connection_events_patch_sha256': sha(ux_source),
         'hls_renderer_patch_sha256': sha(video_source),
-        'features': ['detach', 'native-detach', 'playlist', 'video-modes', 'media-stop', 'audio-only', 'auto-media', 'audio-handoff', 'video-stretch', 'video-viewport', 'session-status', 'audio-metadata', 'music-control', 'full-disconnect', 'mdns-route', 'media-player'],
+        'features': ['detach', 'native-detach', 'playlist', 'video-modes', 'media-stop', 'audio-only', 'auto-media', 'audio-handoff', 'video-stretch', 'video-viewport', 'session-status', 'audio-metadata', 'music-control', 'full-disconnect', 'mdns-route', 'media-player', 'android-cast'],
         'audio_profile_patch_sha256': sha(ROOT / 'airplay/tools/patch_audio_mode.py'),
         'audio_metadata_patch_sha256': sha(ROOT / 'airplay/tools/patch_audio_metadata.py'),
         'audio_metadata_sha256': sha(ROOT / 'airplay/native/mgu_audio_metadata.h'),
@@ -222,6 +226,7 @@ def main():
         'crash_trace_sha256': sha(ROOT / 'airplay/native/mgu_crash_trace.h'),
         'direct_play_sha256': sha(ROOT / 'airplay/native/mgu_direct_play.h'),
         'media_player_sha256': sha(ROOT / 'airplay/native/mgu_media_player.c'),
+        'cast_receiver_sha256': sha(ROOT / 'airplay/native/mgu_cast_receiver.c'),
         'playlist_sha256': sha(ROOT / 'airplay/native/mgu_playlist.h'),
         'reverse_sha256': sha(ROOT / 'airplay/native/mgu_reverse.h'),
         'hls_lifecycle_patches': {name: sha(source / name) for name in [
