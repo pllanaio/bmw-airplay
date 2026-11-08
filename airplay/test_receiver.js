@@ -243,10 +243,14 @@ const { Receiver } = require('../apps/pllana_airplay/receiver');
         assert.strictEqual(p.state.error, 'invalid_profile');
         assert(p.start({ profile: 'video', keepPassword: true }));
         assert.strictEqual(p.state.profile, 'video');
+        assert(p.state.music && p.state.music.controls.next === false && p.musicDirectory && p.musicPoll,
+            'explicit video prepares private authenticated sender controls without claiming capabilities');
+        assert.strictEqual(calls[calls.length - 1].options.env.MGU_MUSIC_DIR, p.musicDirectory);
         assert.strictEqual(calls[calls.length - 1].options.env.MGU_AUDIO_ONLY, '0');
         assert.strictEqual(calls[calls.length - 1].options.env.MGU_AUTO_MEDIA, '0', 'forced video remains available for compatibility');
         assert(p.poll, 'returning to video restores frame polling');
         await p.stop();
+        assert.strictEqual(metadataClosed, 2, 'video control storage follows the native session lifetime too');
         assert(p.start({ profile: 'auto', keepPassword: true }));
         const automaticChild=p.child, automaticPin=p.state.pin, automaticCall=calls[calls.length-1];
         assert.strictEqual(p.state.connected,false);
@@ -305,14 +309,23 @@ const { Receiver } = require('../apps/pllana_airplay/receiver');
         assert.strictEqual(launchFailure.start({profile:'video',viewport:{width:2048,height:1080}}),false);
         assert.strictEqual(launchFailure.state.error,'launch_failed');assert(!fs.existsSync(failedViewport),'spawn failure removes the prepared viewport file');
         const insecureChild=new EventEmitter();insecureChild.pid=999998;
-        const insecure=new Receiver({dataDir:dir,audioSink:'fakesink',skipRuntimeCheck:true,spawn:()=>insecureChild});
+        let insecureEnv;
+        const insecure=new Receiver({dataDir:dir,audioSink:'fakesink',skipRuntimeCheck:true,spawn:(bin,args,options)=>{insecureEnv=options.env;return insecureChild;}});
         insecure.signal=child=>setImmediate(()=>child.emit('close',0));
+        const oldMusicEnv=process.env.MGU_MUSIC_DIR,oldMetadataEnv=process.env.MGU_AUDIO_METADATA_DIR;
+        process.env.MGU_MUSIC_DIR='/another/private/session';process.env.MGU_AUDIO_METADATA_DIR='/another/private/session';
         fs.chmodSync(dir,0o755);
         try {
             assert(insecure.start({profile:'video'}),'a failed viewport write preserves native reception with the safe default');
             assert.strictEqual(insecure.state.viewportError,'video_viewport_failed');
             assert(!fs.existsSync(insecure.viewportFile),'viewport dimensions are never published in a nonprivate directory');
-        } finally {fs.chmodSync(dir,0o700);}
+            assert.strictEqual(insecureEnv.MGU_MUSIC_DIR,undefined,'failed private control setup cannot inherit another sender session');
+            assert.strictEqual(insecureEnv.MGU_AUDIO_METADATA_DIR,undefined);
+        } finally {
+            fs.chmodSync(dir,0o700);
+            if(oldMusicEnv===undefined)delete process.env.MGU_MUSIC_DIR;else process.env.MGU_MUSIC_DIR=oldMusicEnv;
+            if(oldMetadataEnv===undefined)delete process.env.MGU_AUDIO_METADATA_DIR;else process.env.MGU_AUDIO_METADATA_DIR=oldMetadataEnv;
+        }
         assert(insecure.setVideoViewport(1920,720),'a validated retry can restore the private viewport transport');
         assert.strictEqual(insecure.state.error,null);await insecure.destroy();
         // Exercise failure deadlines deterministically. A missing process

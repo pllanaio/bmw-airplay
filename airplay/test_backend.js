@@ -1,10 +1,10 @@
 'use strict';
 const assert = require('assert'), vm = require('vm'), fs = require('fs'), EventEmitter = require('events');
-const sockets = [], writes = [], timers = [], startupOrder = [];
+const sockets = [], writes = [], timers = [], startupOrder = [], reports = [], persisted = [];
 let receiver, route, accept, remote, uplinkOnline = false;
 class Receiver extends EventEmitter {
     constructor(options) { super(); receiver = this; this.runtime = options.runtime; this.musicDirectory = ''; this.options = options; this.state = {}; this.child = null; this.starts = 0; this.stops = 0; }
-    start(options) { startupOrder.push('start'); this.child = {}; this.features = {}; this.starts++; this.lastOptions = options; const profile=options && options.profile || 'auto'; this.musicDirectory=profile!=='video'?'/private/music-'+this.starts:''; this.update({phase:'waiting', profile, mode:profile==='audio'?'audio':'waiting', music:profile!=='video'?{title:'',epoch:null,controls:{}}:null,error:null}); this.emit('music-directory',this.musicDirectory); return true; }
+    start(options) { startupOrder.push('start'); this.child = {}; this.features = {}; this.starts++; this.lastOptions = options; const profile=options && options.profile || 'auto'; this.musicDirectory='/private/music-'+this.starts; this.update({phase:'waiting', profile, mode:profile==='audio'?'audio':'waiting', connected:false,playlistPending:false,returnMode:'waiting',frame:null,music:{title:'',epoch:null,controls:{}},error:null}); this.emit('music-directory',this.musicDirectory); return true; }
     setVideoViewport(width,height) { this.viewport={width,height}; this.viewportUpdates=(this.viewportUpdates||0)+1; return true; }
     crash() { this.child = null; this.musicDirectory=''; this.emit('music-directory',''); this.update({phase:'error', mode:null, error:'receiver_failed'}); this.emit('ended'); }
     stop() { this.stops++; if (this.onStop) { const callback = this.onStop; this.onStop = null; callback(); } const finish=()=>{ this.child = null; this.musicDirectory=''; this.emit('music-directory',''); this.update({ phase:'stopped', mode:null }); this.emit('ended'); }; if (this.stopGate) { const gate=this.stopGate; this.stopGate=null; return gate.then(finish); } finish(); return Promise.resolve(); }
@@ -31,20 +31,26 @@ const fire = ms => { const t = scheduled.find(x => x.ms === ms); assert(t, 'time
 const server = new EventEmitter();
 server.listen = (p, cb) => cb(); server.close = () => {};
 let socketInode = 1, exitCode = null;
-const fakeFs = {existsSync:()=>true,lstatSync:()=>({isSocket:()=>true,uid:12233}),unlinkSync:()=>{},writeFileSync:()=>{},chmodSync:()=>{},
+const fakeFs = {existsSync:()=>true,lstatSync:()=>({isSocket:()=>true,uid:12233}),unlinkSync:()=>{},writeFileSync:(file,text,options)=>persisted.push({file,text,options}),chmodSync:()=>{},
     statSync:p=>({dev:1,ino:/control\.sock$/.test(p)?socketInode:7,mtime:new Date(0)})};
 const modules = {
     './resolver':{refresh:()=>startupOrder.push('dns'),hasUplink:()=>uplinkOnline},fs:fakeFs,path:require('path'),'./receiver':{Receiver,validVideoViewport:require('../apps/pllana_airplay/receiver').validVideoViewport},
     './audio_route':{AudioRoute,AUDIO_SINK:'fakesink'},'./kit/signals':{},
     './music_controls':{MusicControls},
+    child_process:{spawn:(binary,args,options)=>{
+        const child=new EventEmitter(); child.kill=signal=>{child.killed=signal;};
+        reports.push({binary,args,options,child}); return child;
+    }},
     net:{createServer:cb=>{accept=cb; return server;}}
 };
-vm.runInNewContext(fs.readFileSync(require('path').join(__dirname,'../apps/pllana_airplay/backend.js'),'utf8'), {
+const backendSource=fs.readFileSync(require('path').join(__dirname,'../apps/pllana_airplay/backend.js'),'utf8');
+const runBackend=()=>vm.runInNewContext(backendSource, {
     require:name=>{assert(modules[name],name); return modules[name];},
     __dirname:'/app/source/javascript',__filename:'/app/source/javascript/backend.js',Buffer,Promise,Date,JSON,Error,
-    process:{getuid:()=>12233,env:{},on:()=>{},exit:code=>{exitCode=code;}},
+    process:{getuid:()=>12233,execPath:'/usr/bin/node-test',env:{},on:()=>{},exit:code=>{exitCode=code;}},
     setInterval:fn=>{timers.push(fn); return {unref:()=>{}};},clearInterval:()=>{},setTimeout:fakeSetTimeout,clearTimeout:fakeClearTimeout
 });
+runBackend();
 const turn = () => new Promise(resolve=>setImmediate(resolve));
 (async()=>{
     const s = new EventEmitter(); s.destroyed=false; s.writableLength=0;
@@ -52,6 +58,18 @@ const turn = () => new Promise(resolve=>setImmediate(resolve));
     s.destroy=()=>{s.destroyed=true;s.emit('close');};
     accept(s);
     s.emit('data','{"command":"start","viewport":{"width":1920,"height":720}}\n'); await turn();
+    assert.strictEqual(reports.length,1,'the static BMW contract report starts once per backend');
+    assert.strictEqual(reports[0].binary,'/usr/bin/node-test');
+    assert.strictEqual(reports[0].args[0],'/app/source/javascript/inspect_bmw_contracts.js');
+    assert.strictEqual(reports[0].args[1],'--output-dir');
+    assert.strictEqual(reports[0].args[2],'/app/data/airplay');
+    assert.strictEqual(JSON.stringify(reports[0].options.stdio),JSON.stringify(['ignore','ignore','ignore']));
+    assert(receiver.child,'an unfinished contract-inspection child never blocks receiver startup');
+    fire(5000); await turn();
+    assert.strictEqual(reports[0].child.killed,'SIGKILL','contract inspection has a bounded best-effort deadline');
+    reports[0].child.emit('error',Error('proprietary definitions must not be logged'));
+    assert(persisted.some(value=>value.text.includes('bmw_contract_report_failed')));
+    assert(!persisted.some(value=>value.text.includes('proprietary definitions')));
     assert.strictEqual(receiver.lastOptions.viewport.width,1920); assert.strictEqual(receiver.lastOptions.viewport.height,720,
         'the initial canvas dimensions reach native launch before the first frame');
     s.emit('data','{"command":"video-viewport","width":1600,"height":520}\n');
@@ -278,6 +296,52 @@ const turn = () => new Promise(resolve=>setImmediate(resolve));
     const updatesBeforeStale=receiver.viewportUpdates;
     s4.emit('data','{"command":"video-viewport","width":2048,"height":1080}\n');
     assert.strictEqual(receiver.viewportUpdates,updatesBeforeStale,'a stale frontend cannot resize the current child');
+    // Video profiles retain the same verified sender's real DACP controls.
+    // They must never turn next/previous into local EOS or receiver commands.
+    finalUI.emit('data','{"command":"start","profile":"video"}\n'); await turn(); await turn();
+    receiver.update({music:{title:'Native RAOP title',artist:'Native artist',epoch:null,controls:{}}});
+    remote.state({epoch:'video-sender',controls:{next:true,previous:true,playPause:true},
+        metadata:{title:'DACP video title',artist:'Phone artist',album:'Phone album'},playbackState:'playing'});
+    assert.strictEqual(receiver.state.music.title,'Native RAOP title','nested DACP metadata preserves native RAOP title fields');
+    assert.strictEqual(receiver.state.music.metadata.title,'DACP video title','remote metadata reaches an explicit video profile');
+    const actionsBeforeVideo=remote.actions.length, endsBeforeRemote=receiver.videoEnds, resumesBeforeRemote=receiver.resumes, stopsBeforeRemote=receiver.stops;
+    receiver.update({mode:'hls',phase:'loading',connected:true,playlistPending:false,returnMode:'waiting'});
+    finalUI.emit('data','{"command":"music-control","action":"next","epoch":"video-sender"}\n'); await turn();
+    assert.strictEqual(remote.actions.length,actionsBeforeVideo+1);
+    assert.strictEqual(remote.actions[remote.actions.length-1].action,'next');
+    receiver.update({mode:'hls',phase:'mirroring',frame:{sequence:1}});
+    finalUI.emit('data','{"command":"music-control","action":"previous","epoch":"video-sender"}\n'); await turn();
+    assert.strictEqual(remote.actions.length,actionsBeforeVideo+2);
+    assert.strictEqual(remote.actions[remote.actions.length-1].action,'previous');
+    receiver.update({mode:'waiting',phase:'waiting',connected:true,playlistPending:true,returnMode:'waiting'});
+    finalUI.emit('data','{"command":"music-control","action":"next","epoch":"video-sender"}\n'); await turn();
+    assert.strictEqual(remote.actions.length,actionsBeforeVideo+3,'a connected direct-video playlist gap retains genuine sender control');
+    for(const fields of [
+        {mode:'hls',phase:'waiting'}, {mode:'hls',phase:'error'}, {mode:'hls',phase:'audio'},
+        {mode:'mirror',phase:'mirroring'}, {mode:'waiting',phase:'waiting',connected:false},
+        {mode:'waiting',phase:'waiting',connected:true,returnMode:'mirror'},
+        {mode:'waiting',phase:'waiting',connected:true,returnMode:'waiting',playlistPending:false},
+        {profile:'audio',mode:'waiting',phase:'waiting',playlistPending:false}
+    ]) {
+        receiver.update(fields);
+        finalUI.emit('data','{"command":"music-control","action":"next","epoch":"video-sender"}\n'); await turn();
+        assert.strictEqual(remote.actions.length,actionsBeforeVideo+3,'cached capabilities never authorize inactive or mirror media');
+    }
+    receiver.update({profile:'video',mode:'hls',phase:'loading',playlistPending:false});
+    finalUI.emit('data','{"command":"music-control","action":"next","epoch":"stale-video-sender"}\n'); await turn();
+    assert.strictEqual(remote.actions.length,actionsBeforeVideo+3,'HLS commands retain the current verified sender epoch');
+    assert.strictEqual(receiver.videoEnds,endsBeforeRemote); assert.strictEqual(receiver.resumes,resumesBeforeRemote);
+    assert.strictEqual(receiver.stops,stopsBeforeRemote,'genuine next/previous never become local video stop or mirroring commands');
+    let releaseVideoCommand;
+    remote.nextResult=new Promise(resolve=>{releaseVideoCommand=resolve;});
+    finalUI.emit('data','{"command":"music-control","action":"next","epoch":"video-sender"}\n'); await turn();
+    finalUI.emit('data','{"command":"music-control","action":"previous","epoch":"video-sender"}\n');
+    finalUI.emit('data','{"command":"stop","id":"slow-video-control-stop"}\n'); await turn();
+    assert(!receiver.child && !route.owned,'a slow HLS sender command cannot delay explicit stop');
+    releaseVideoCommand(); await turn(); await turn();
+    assert.strictEqual(remote.actions.length,actionsBeforeVideo+4,'queued HLS controls are invalidated by full stop');
+    assert(writes.some(message=>message.reply && message.reply.id==='slow-video-control-stop' && message.reply.ok));
+    assert.strictEqual(reports.length,1,'profile changes and stop never repeat static firmware inspection');
     finalUI.emit('data','{"command":"video-viewport","width":2048,"height":2048}\n');
     assert(finalUI.destroyed,'the backend independently rejects excessive viewport pixel counts');
     // App update: the package manager moved our socket away with the old home.
@@ -285,5 +349,27 @@ const turn = () => new Promise(resolve=>setImmediate(resolve));
     socketInode = 2; timers[1](); await turn(); await turn();
     assert.strictEqual(exitCode, 75, 'a replaced app restarts the backend through systemd');
     assert(remote.closed, 'backend shutdown closes remote control work');
+    // A successful one-shot report also exposes only a short diagnostic code.
+    runBackend(); assert.strictEqual(reports.length,2);
+    reports[1].child.emit('close',0); await turn();
+    assert(persisted.some(value=>value.text.includes('bmw_contract_report_saved')));
+    assert.strictEqual(receiver.state.bmwMedia,undefined,'firmware report details never become public receiver state');
+    // Shutdown also owns an inspection that has not reached its deadline.
+    runBackend(); assert.strictEqual(reports.length,3);
+    server.emit('error',Error('backend shutdown test'));
+    assert.strictEqual(reports[2].child.killed,'SIGKILL','backend shutdown terminates an unfinished private report');
+    reports[2].child.emit('close',null); await turn();
+    assert(!scheduled.some(timer=>timer.ms===5000),'report close removes its outstanding inspection deadline');
+    // A synchronous launch failure is sanitized and cannot block reception.
+    const reportSpawn=modules.child_process.spawn;
+    modules.child_process.spawn=()=>{throw Error('private firmware catalog launch details');};
+    try { runBackend(); } finally { modules.child_process.spawn=reportSpawn; }
+    assert(persisted[persisted.length-1].text.includes('bmw_contract_report_failed'));
+    assert(!persisted.some(value=>value.text.includes('private firmware catalog launch details')));
+    const finalReportUI=new EventEmitter(); finalReportUI.destroyed=false; finalReportUI.writableLength=0;
+    finalReportUI.setEncoding=()=>{}; finalReportUI.write=()=>{}; finalReportUI.destroy=()=>{finalReportUI.destroyed=true;finalReportUI.emit('close');};
+    accept(finalReportUI); finalReportUI.emit('data','{"command":"start"}\n'); await turn();
+    assert(receiver.child,'a failed report spawn leaves normal AirPlay startup available');
+    finalReportUI.emit('data','{"command":"stop"}\n'); await turn();
     console.log('Busy audio startup, media reacquisition, focus loss, crash recovery, frontend grace and explicit stop passed');
 })().catch(e=>{console.error(e);process.exitCode=1;});

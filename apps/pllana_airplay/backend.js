@@ -3,7 +3,7 @@ process.title = 'mgu-airplay';
 const resolver = require('./resolver');
 resolver.refresh();
 setInterval(() => resolver.refresh(), 2000).unref();
-const fs = require('fs'), net = require('net'), path = require('path');
+const fs = require('fs'), net = require('net'), path = require('path'), childProcess = require('child_process');
 const { Receiver, validVideoViewport } = require('./receiver');
 const { MusicControls } = require('./music_controls');
 const { AudioRoute, AUDIO_SINK } = require('./audio_route');
@@ -22,9 +22,10 @@ const music = new MusicControls({
     directory: () => receiver.musicDirectory,
     resolveBinary: [path.join(receiver.runtime, 'lib/ld-linux-x86-64.so.2'), '--library-path', path.join(receiver.runtime, 'lib'), path.join(receiver.runtime, 'bin/mgu-dacp-resolve')],
     onState: remote => {
-        if (!receiver.child || receiver.state.phase === 'stopping' || receiver.state.profile === 'video' || !receiver.state.music) return;
-        const next = Object.assign({}, receiver.state.music, remote);
-        if (remote.epoch !== receiver.state.music.epoch) next.controlError = null;
+        if (!receiver.child || receiver.state.phase === 'stopping') return;
+        const current = receiver.state.music || {};
+        const next = Object.assign({}, current, remote);
+        if (remote.epoch !== current.epoch) next.controlError = null;
         receiver.update({ music: next });
     },
 });
@@ -44,10 +45,16 @@ function musicRequest(request) {
          (action === 'shuffle' && (value === 0 || value === 1)) ||
          (action === 'repeat' && Number.isInteger(value) && value >= 0 && value <= 2));
 }
+function controllableMedia(state) {
+    return (state.mode === 'audio' && (state.phase === 'audio' || state.phase === 'waiting')) ||
+        (state.mode === 'hls' && (state.phase === 'loading' || state.phase === 'mirroring')) ||
+        (state.mode === 'waiting' && state.phase === 'waiting' && state.connected === true &&
+            state.playlistPending === true && state.returnMode === 'waiting');
+}
 function currentMusicRequest(request) {
     const current = receiver.state.music;
     return wanted && !intentionalStop && receiver.child && receiver.state.phase !== 'stopping' &&
-        (receiver.state.mode === 'audio' || receiver.state.profile === 'audio') && current && current.epoch === request.epoch &&
+        controllableMedia(receiver.state) && current && current.epoch === request.epoch &&
         current.controls && current.controls[request.action] === true;
 }
 function musicError(code) {
@@ -83,6 +90,32 @@ receiver.on('diagnostic', code => {
     if (diagnostics.length > 60) diagnostics.shift();
     try { fs.writeFileSync(path.join(data, 'diagnostic.json'), JSON.stringify(diagnostics), { mode: 0o600 }); } catch (e) {}
 });
+// Inspect fixed local firmware definitions once, outside the receiver's queue.
+// The child writes its detailed report only to private app storage; its output
+// never enters UI state or diagnostics, and failure cannot delay AirPlay.
+let reportChild = null;
+function inspectBmwMediaOnce() {
+    let child, timeout, finished = false;
+    const finish = ok => {
+        if (finished) return;
+        finished = true; clearTimeout(timeout);
+        if (reportChild === child) reportChild = null;
+        receiver.emit('diagnostic', ok ? 'bmw_contract_report_saved' : 'bmw_contract_report_failed');
+    };
+    try {
+        child = childProcess.spawn(process.execPath, [path.join(__dirname, 'inspect_bmw_contracts.js'), '--output-dir', data],
+            { cwd: __dirname, stdio: ['ignore', 'ignore', 'ignore'] });
+        reportChild = child;
+        timeout = setTimeout(() => {
+            finish(false);
+            try { child.kill('SIGKILL'); } catch (e) {}
+        }, 5000);
+        if (timeout && timeout.unref) timeout.unref();
+        child.once('error', () => finish(false));
+        child.once('close', code => finish(code === 0));
+    } catch (e) { finish(false); }
+}
+inspectBmwMediaOnce();
 const route = new AudioRoute(signals);
 // A frontend that disappears (app manager restart, stalled event loop, HMI
 // focus change) no longer ends the phone's AirPlay session immediately. Only
@@ -323,6 +356,7 @@ function shutdown(code) {
     if (shuttingDown) return;
     shuttingDown = true; clearInterval(timer); clearTimeout(graceTimer); clearTimeout(restartTimer); clearTimeout(stableTimer);
     music.close();
+    if (reportChild) { try { reportChild.kill('SIGKILL'); } catch (e) {} reportChild = null; }
     if (client) client.destroy();
     server.close();
     const hard = setTimeout(() => process.exit(1), 12000);

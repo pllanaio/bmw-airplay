@@ -5,8 +5,8 @@
 Ein experimenteller, nativer AirPlay-Empfänger für BMW MGU / iDrive 7 von
 **[Leon Pllana IT-Solutions](https://pllana.io)**.
 
-**Quellstand:** App und native Laufzeit **0.4.6**.
-Die Änderungen in 0.4.6 sind lokal geprüft; die Fahrzeugabnahme steht aus.
+**Quellstand:** App und native Laufzeit **0.4.7**.
+Die Änderungen in 0.4.7 sind lokal geprüft; die Fahrzeugabnahme steht aus.
 Keine allgemeine Hardwarefreigabe und kein offizielles BMW- oder Apple-Produkt.
 
 **Lizenz:** [GPL-3.0-or-later](LICENSE.md), entsprechend Roberts mgu-store.
@@ -26,8 +26,8 @@ App und native Laufzeit müssen gemeinsam aktualisiert werden.
 - YouTube per direkter AirPlay-/HLS-Wiedergabe; das iPhone bleibt parallel bedienbar.
 - Am Entwicklungsfahrzeug bestätigt: Spiegelung → Video → Spiegelung sowie
   direkte YouTube-Wiedergabe bei im Hintergrund laufender iPhone-App.
-- Native Vollbildausgabe mit erhaltenem Seitenverhältnis und Unterstützung
-  wechselnder Bildabmessungen; Fotos und Videos nutzen dieselbe Ausgabe.
+- Vollständige Videos ohne Beschnitt auf der tatsächlichen Displayfläche;
+  Bildschirmspiegelung behält ihr Seitenverhältnis.
 - Übergabepfad für YouTube-Playlists: Ende-Meldung an das iPhone und Erhalt
   der Sitzung für den nächsten Titel; Fahrzeugabnahme steht aus.
   [Verwendung und Testmatrix](docs/PLAYLISTS.md).
@@ -73,15 +73,14 @@ App-Darstellung verdeckt; die unteren Bedientasten bleiben erreichbar.
 
 ## Verwendung
 
-1. **CarPlay manuell im iDrive trennen.** Die App steuert oder unterdrückt CarPlay nicht.
-2. Das iPhone mit dem **BMW-WLAN** verbinden. Für lokale Bildschirmspiegelung
-   ist weder der persönliche iPhone-Hotspot noch ein Internet-Uplink nötig.
-   Alternativ können beide Geräte ein gemeinsames WLAN nutzen.
-   Direkte YouTube-/HLS-Wiedergabe benötigt zusätzlich Internet an der MGU
-   über den MGU-Uplink. Die Mobilfunkverbindung des iPhones allein genügt
-   dafür nicht. Ohne Uplink bleibt YouTube deshalb in der Bildschirmspiegelung;
-   der direkte YouTube-AirPlay-Knopf liefert in diesem Modus nur Audio.
-   [Netzwerkaufbau und Grenzen](docs/NETWORK.md).
+1. HeadUnit über MGU-Uplink mit dem **persönlichen iPhone-Hotspot** verbinden.
+   Eine zusätzliche Verbindung des iPhones zum BMW-WLAN ist dabei nicht nötig.
+   Alternativ funktioniert das bisherige BMW-WLAN mit separatem Uplink weiter.
+   Ohne Uplink bleibt lokale Spiegelung möglich; direkte HLS-Videos benötigen
+   Internet an der HeadUnit. [Aufbau und Testgrenzen](docs/NETWORK.md).
+2. Eine parallele CarPlay-Sitzung wird von der App nicht beendet. Automatische
+   Fokusübergabe und nahtloses Umschalten mit CarPlay sind noch offen. Falls
+   CarPlay die Wiedergabe übernimmt, muss es vorerst im iDrive getrennt werden.
 3. Auf der MGU „BMW AirPlay by pllana.io“ öffnen und „Verbinden“ drücken.
 4. Am iPhone denselben Empfänger unter „Bildschirmsynchronisierung“ oder direkt
    im AirPlay-Menü von YouTube auswählen und gegebenenfalls den Code eingeben.
@@ -96,8 +95,10 @@ App-Darstellung verdeckt; die unteren Bedientasten bleiben erreichbar.
 
 - DRM-geschützte Streams werden nicht unterstützt; insbesondere gibt es keine
   allgemeine Netflix-, Disney+-, Prime- oder Paramount+-Wiedergabe über UxPlay.
-- CarPlay kann die Medienwiedergabe übernehmen. Die automatische Unterdrückung
-  aus 0.2.5 wurde in 0.2.6 vollständig entfernt.
+- CarPlay kann die Medienwiedergabe übernehmen. Für sichere Fokusübergabe,
+  Lenkradtasten und Titel im Tacho fehlt noch der bestätigte BMW-Vertrag.
+  Die reine Schnittstellendiagnose stellt diese Funktionen nicht bereit.
+  [Benötigte Schnittstellen](docs/BMW_MEDIA_CONTRACT.md).
 - Ein fehlgeschlagener Medienabruf kann noch einen nativen Empfängerabsturz
   auslösen. Dieser Fehler ist offen; die Diagnose erfasst begrenzte Absturzadressen.
 - App-Wechsel etwa zwischen YouTube und ARD sowie besonders breite Videos

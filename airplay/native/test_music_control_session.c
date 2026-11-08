@@ -26,6 +26,105 @@ static void ignore_format(void *cls, unsigned char *ct, unsigned short *spf, boo
 }
 static bool current_owner = true;
 static bool selected(void *cls, void *owner) { (void)cls; (void)owner; return current_owner; }
+static bool video_active;
+static bool active_video(void *cls) { (void)cls; return video_active; }
+static void accepted_video(void *cls) { raop_music_control_bind_video(cls); video_active = true; }
+static void ignore_play(void *cls, const char *uri, float start) { (void)cls; (void)uri; (void)start; }
+static void admit_video(raop_t *raop, unsigned char *peer) {
+    static const char body[] = "Content-Location: https://media.example/video.mp4\r\nStart-Position: 0\r\n";
+    char header[512]; int bytes = snprintf(header, sizeof header,
+        "POST /play HTTP/1.1\r\nX-Apple-Session-ID: 11111111-2222-4333-8444-555555555555\r\nContent-Type: text/parameters\r\nContent-Length: %zu\r\n\r\n", sizeof body - 1);
+    http_request_t *request = http_request_init(); http_request_add_data(request, header, bytes);
+    http_request_add_data(request, body, sizeof body - 1); assert(http_request_is_complete(request));
+    raop_conn_t video = {0}; video.raop = raop; video.remote = peer; video.remotelen = 4;
+    video.connection_type = CONNECTION_TYPE_AIRPLAY;
+    http_response_t *response = NULL; conn_request(&video, request, &response);
+    assert(response && http_response_get_status(response) == 200 && raop->current_video >= 0);
+    assert(!raop->mgu_dacp_request_owner); /* the handler never leaks its peer context */
+    http_request_destroy(request); http_response_destroy(response);
+}
+
+static void teardown_audio(raop_conn_t *conn) {
+    plist_t root = plist_new_dict(), streams = plist_new_array(), stream = plist_new_dict();
+    plist_dict_set_item(stream, "type", plist_new_uint(96)); plist_array_append_item(streams, stream);
+    plist_dict_set_item(root, "streams", streams);
+    char *body = NULL; uint32_t bytes = 0; plist_to_bin(root, &body, &bytes);
+    char header[256]; int header_bytes = snprintf(header, sizeof header,
+        "TEARDOWN /stream RTSP/1.0\r\nCSeq: 2\r\nContent-Type: application/x-apple-binary-plist\r\nContent-Length: %u\r\n\r\n", bytes);
+    http_request_t *request = http_request_init(); http_request_add_data(request, header, header_bytes);
+    http_request_add_data(request, body, bytes); assert(http_request_is_complete(request));
+    http_response_t *response = NULL; conn_request(conn, request, &response);
+    assert(response && http_response_get_status(response) == 200);
+    http_request_destroy(request); http_response_destroy(response); plist_mem_free(body); plist_free(root);
+}
+
+static void video_retention_test(void) {
+    raop_t raop = {0}; raop.logger = logger_init();
+    raop.callbacks.music_control = remote; raop.callbacks.is_hls_active = active_video;
+    raop.callbacks.cls = &raop; raop.callbacks.on_video_loading = accepted_video; raop.callbacks.on_video_play = ignore_play;
+    raop.hls_support = true;
+    unsigned char peer[] = {192,168,1,15};
+    raop_conn_t first = {0}; first.raop = &raop; first.remote = peer; first.remotelen = 4;
+    first.connection_type = CONNECTION_TYPE_RAOP; first.mgu_pair_verified = true;
+    first.raop_rtp = (raop_rtp_t *)&first;
+    expected_id = "ABCD1234"; expected_token = "123456789";
+    int before = exports, before_clear = clears;
+    options(&first, true); assert(exports == before + 1);
+    admit_video(&raop, peer);
+    first.raop_rtp = NULL; teardown_audio(&first);
+    assert(clears == before_clear && raop.mgu_dacp_video_retained);
+    assert(!first.mgu_control_published && !first.mgu_dacp_id[0] && !first.mgu_active_remote[0]);
+    assert(raop.mgu_dacp_current_owner == &first);
+    options(&first, false); assert(exports == before + 1); /* no inherited re-publication */
+    video_active = false; raop_music_control_release_video(&raop);
+    assert(clears == before_clear + 1 && !raop.mgu_dacp_video_retained && !raop.mgu_dacp_current_owner);
+    raop_music_control_release_video(&raop); assert(clears == before_clear + 1);
+
+    /* Natural playlist wait can retain its verified sender while connected;
+     * explicit stop/error/final-disconnect release the retained descriptor. */
+    first.raop_rtp = (raop_rtp_t *)&first; options(&first, true);
+    admit_video(&raop, peer);
+    video_active = false;
+    raop.mgu_terminal = true;
+    first.raop_rtp = NULL; teardown_audio(&first);
+    assert(clears == before_clear + 1 && raop.mgu_dacp_video_retained);
+    raop.mgu_terminal = false; raop_music_control_release_video(&raop);
+    assert(clears == before_clear + 2 && !raop.mgu_dacp_video_retained);
+
+    /* A superseded verified connection must not retain or clear the newer
+     * selected sender's capability when its own audio later disconnects. */
+    first.raop_rtp = (raop_rtp_t *)&first; options(&first, true);
+    raop_conn_t second = {0}; second.raop = &raop; second.remote = peer; second.remotelen = 4;
+    second.connection_type = CONNECTION_TYPE_RAOP; second.authenticated = true;
+    second.raop_rtp = (raop_rtp_t *)&second; options(&second, true);
+    assert(raop.mgu_dacp_current_owner == &second);
+    before_clear = clears; admit_video(&raop, peer);
+    mgu_music_control_clear(&first);
+    assert(clears == before_clear && !raop.mgu_dacp_video_retained && raop.mgu_dacp_current_owner == &second);
+    mgu_music_control_clear(&second);
+    assert(clears == before_clear && raop.mgu_dacp_video_retained);
+    video_active = false; raop_music_control_release_video(&raop);
+    assert(clears == before_clear + 1 && !raop.mgu_dacp_current_owner);
+    /* Real accepted /play from another numeric peer cannot inherit or regain
+     * the earlier verified phone's authorization through a later OPTIONS. */
+    first.raop_rtp = (raop_rtp_t *)&first; options(&first, true);
+    admit_video(&raop, peer); first.raop_rtp = NULL; teardown_audio(&first);
+    assert(raop.mgu_dacp_video_retained);
+    unsigned char other_peer[] = {192,168,1,16};
+    before_clear = clears; const int before_exports = exports;
+    admit_video(&raop, other_peer);
+    assert(clears == before_clear + 1 && !raop.mgu_dacp_video_retained && !raop.mgu_dacp_current_owner);
+    assert(raop.mgu_dacp_video_peer_length == 4 && !memcmp(raop.mgu_dacp_video_peer, other_peer, 4));
+    first.raop_rtp = (raop_rtp_t *)&first; options(&first, true);
+    assert(exports == before_exports && !first.mgu_control_published);
+    video_active = false;
+    unsigned char link_a[16] = {0xfe,0x80}, link_b[16] = {0xfe,0x80};
+    assert(!mgu_music_peer_equal(link_a,16,1,link_b,16,2));
+    assert(mgu_music_peer_equal(link_a,16,2,link_b,16,2));
+    raop_destroy_airplay_video(&raop, -1); mgu_reverse_destroy(&raop);
+    logger_destroy(raop.logger);
+    puts("Verified DACP survives HLS audio teardown/connected playlist wait, releases on video end, and ignores superseded owners");
+}
 
 static void setup_stream(raop_conn_t *conn, unsigned int codec, bool credentials) {
     plist_t root = plist_new_dict(), streams = plist_new_array(), stream = plist_new_dict();
@@ -55,7 +154,10 @@ static void reused_stream_test(void) {
     callbacks.audio_process = ignore_audio; callbacks.video_process = ignore_video;
     callbacks.audio_get_format = ignore_format; callbacks.music_control = remote;
     callbacks.audio_stream_is_current = selected;
+    callbacks.is_hls_active = active_video;
+    callbacks.on_video_loading = accepted_video; callbacks.on_video_play = ignore_play;
     raop_t *raop = raop_init(&callbacks); assert(raop);
+    raop->callbacks.cls = raop; raop->hls_support = true;
     assert(raop_init2(raop, 0, "02:00:00:00:00:01", "") == 0);
     unsigned char address[] = {192,168,1,15};
     raop_conn_t *conn = conn_init(raop, address, 4, address, 4, 0); assert(conn);
@@ -67,10 +169,19 @@ static void reused_stream_test(void) {
     conn->raop_rtp = raop_rtp_init(raop->logger, &callbacks, conn->raop_ntp, "127.0.0.1", 4, aes, aes);
     assert(conn->raop_rtp);
     setup_stream(conn, 8, true); assert(exports == before + 1 && conn->mgu_control_published);
+    admit_video(raop, address);
+    mgu_music_control_clear(conn);
+    assert(raop->mgu_dacp_video_retained && !conn->mgu_control_published);
     const int first_clears = clears;
     expected_id = "1234ABCD"; expected_token = "987654321";
+    raop_music_control_begin_audio(raop);
     setup_stream(conn, 2, true);
     assert(exports == before + 2 && clears > first_clears && conn->mgu_control_published);
+    assert(!raop->mgu_dacp_video_retained && raop->mgu_dacp_current_owner == conn);
+    video_active = false;
+    const int audio_clears = clears;
+    raop_music_control_release_video(raop);
+    assert(clears == audio_clears && conn->mgu_control_published); /* old video cannot erase new audio */
     assert(!strcmp(conn->mgu_dacp_id, expected_id) && !strcmp(conn->mgu_active_remote, expected_token));
     setup_stream(conn, 2, false);
     assert(exports == before + 2 && !conn->mgu_control_published && !conn->mgu_active_remote[0]);
@@ -115,6 +226,7 @@ int main(void) {
     http_request_destroy(request); http_response_destroy(response); plist_mem_free(body); plist_free(root);
     logger_destroy(raop.logger);
     reused_stream_test();
+    video_retention_test();
     puts("DACP export requires verified/authenticated RAOP, fresh stream credentials, and revokes on audio TEARDOWN");
     return 0;
 }

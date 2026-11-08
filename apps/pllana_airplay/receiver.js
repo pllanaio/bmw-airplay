@@ -43,7 +43,7 @@ function removeVideoViewport(file) {
 }
 
 function emptyMusic() {
-    return { epoch: null, title: '', artist: '', album: '', artwork: null, playbackState: 'unknown', shuffle: null, repeat: null,
+    return { epoch: null, title: '', artist: '', album: '', artwork: null, metadata: null, playbackState: 'unknown', shuffle: null, repeat: null,
         controls: { playPause: false, next: false, previous: false, shuffle: false, repeat: false } };
 }
 
@@ -192,15 +192,17 @@ class Receiver extends EventEmitter {
             } catch (e) { viewportError = 'video_viewport_failed'; this.emit('diagnostic', viewportError); }
         } else delete env.MGU_HLS_VIEWPORT_FILE;
         let metadata = null, metadataEnv = null;
-        if (profile !== 'video') {
-            try {
-                metadata = this.options.metadataFactory ? this.options.metadataFactory(this.dataDir, this.runtime) :
-                    new AudioMetadata(this.dataDir, { runtime: this.runtime, env });
-                metadataEnv = metadata.env(); Object.assign(env, metadataEnv);
-            } catch (e) {
-                if (metadata) metadata.close(); metadata = null; metadataEnv = null;
-                this.emit('diagnostic', 'audio_metadata_unavailable');
-            }
+        // Every profile can expose authenticated sender controls. A video
+        // profile needs the same private DACP lifetime as automatic reception.
+        // Failed setup must never fall back to another inherited session path.
+        delete env.MGU_MUSIC_DIR; delete env.MGU_AUDIO_METADATA_DIR;
+        try {
+            metadata = this.options.metadataFactory ? this.options.metadataFactory(this.dataDir, this.runtime) :
+                new AudioMetadata(this.dataDir, { runtime: this.runtime, env });
+            metadataEnv = metadata.env(); Object.assign(env, metadataEnv);
+        } catch (e) {
+            if (metadata) metadata.close(); metadata = null; metadataEnv = null;
+            this.emit('diagnostic', 'audio_metadata_unavailable');
         }
         // No shell or privilege changes; the receiver identity and trusted
         // pairing keys live only in the app's private data directory.
@@ -210,7 +212,7 @@ class Receiver extends EventEmitter {
         this.child = child; this.closedChild = null; this.features = {};
         this.viewportFile = viewportFile;
         this.musicDirectory = metadataEnv && metadataEnv.MGU_MUSIC_DIR || '';
-        this.update({ phase: 'starting', profile, directVideo, videoViewport: this.videoViewport, viewportError, connected: false, supportsSessionStatus: false, origin: null, supportsVideoStop: false, supportsAutomaticMedia: false, detached: false, playlistPending: false, music: profile !== 'video' ? emptyMusic() : null, mode: profile === 'audio' ? 'audio' : 'waiting', returnMode: 'waiting', pin, file, frame: null, error: viewportError, audioError: null, audio: audio !== 'fakesink' });
+        this.update({ phase: 'starting', profile, directVideo, videoViewport: this.videoViewport, viewportError, connected: false, supportsSessionStatus: false, origin: null, supportsVideoStop: false, supportsAutomaticMedia: false, detached: false, playlistPending: false, music: emptyMusic(), mode: profile === 'audio' ? 'audio' : 'waiting', returnMode: 'waiting', pin, file, frame: null, error: viewportError, audioError: null, audio: audio !== 'fakesink' });
         this.emit('music-directory', this.musicDirectory);
         // Node 8 has no ChildProcess "spawn" event. spawn() already returns
         // a pid on success; still handle its asynchronous error event below.

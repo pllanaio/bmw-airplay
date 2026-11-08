@@ -1,4 +1,4 @@
-# Projektstand – 7. November 2026
+# Projektstand – 8. November 2026
 
 ## Einordnung
 
@@ -8,7 +8,7 @@ einem separat installierten UxPlay-Empfänger und BMW-Audiorouting.
 Die bisherige Erprobung ist keine Freigabe für alle MGU-Hardwarestände,
 Fahrzeugausstattungen, iPhone-Apps oder iOS-Versionen.
 
-Der vorbereitete Quellstand für App und Laufzeit ist **0.4.6**. Die neuen
+Der vorbereitete Quellstand für App und Laufzeit ist **0.4.7**. Die neuen
 Änderungen sind lokal geprüft und noch nicht am Fahrzeug abgenommen. Die
 Fahrzeugbestätigungen weiter unten beziehen sich auf die dort genannten
 älteren Versionen.
@@ -16,6 +16,25 @@ Fahrzeugbestätigungen weiter unten beziehen sich auf die dort genannten
 Der historische Git-Tag v0.2.6 bezeichnet den ersten veröffentlichten
 Quellcode-Snapshot. Die nachträgliche Store-Anbindung und diese ausführliche
 Dokumentation stehen auf main. Der Tag wird dafür nicht nachträglich verschoben.
+
+## Änderungen in 0.4.7 – Hotspot-Erkennung und vorbereitete Sendersteuerung
+
+- Vorhandener MGU-Uplink liefert bereits Internet für HLS. Ergänzt wird
+  Bonjour-Erkennung auf der aktiven privaten WLAN-Uplink-Lease samt enger
+  Rückroute für den vorhandenen BMW-mDNS-Dienst. Damit ist der Aufbau
+  iPhone-Hotspot → HeadUnit vorgesehen, ohne zusätzliche BMW-WLAN-Verbindung
+  am iPhone. Die reale Erkennung auf dem Hotspot bleibt am Fahrzeug zu prüfen.
+- Authentifizierte DACP-Steuerung kann beim Übergang zu HLS erhalten bleiben,
+  solange der tatsächlich gekoppelte Sender sie anbietet. Kein erfundener
+  nächster Titel durch Stoppen oder künstliches Videoende.
+- Eine rein lesende Diagnose sammelt relevante statische BMW-Schnittstellen.
+  CarPlay-Fokus, eingehende Lenkradbefehle und Medienpublikation im Tacho
+  sind weiterhin **nicht implementiert**: der konkrete BMW-Vertrag fehlt.
+  Der CarPlay-Dienst bleibt aktiv und wird nicht verändert.
+
+App und Empfänger gemeinsam aktualisieren. Die Netzwerkanpassung ist keine
+Bestätigung für kabelloses CarPlay parallel zum Hotspot; WLAN-Ressourcen und
+BMW-Fokus müssen am konkreten Aufbau geprüft werden.
 
 ## Änderungen in 0.4.6 – tatsächliche Displayhöhe, Musikübergabe und Verbindungsstatus
 

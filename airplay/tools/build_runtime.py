@@ -121,6 +121,10 @@ def main():
          '-o', RUNTIME / 'bin/airplay-launch'])
     run(['gcc', '-static', '-O2', '-Wall', '-Wextra', '-Werror', ROOT / 'airplay/native/backend_launch.c',
          '-o', RUNTIME / 'bin/airplay-backend-launch'])
+    # The root network controller invokes this fixed-purpose netlink helper.
+    # Like the launchers it is static and runs without the private loader.
+    run(['gcc', '-static', '-O2', '-march=x86-64', '-mtune=generic', '-Wall', '-Wextra', '-Werror',
+         ROOT / 'airplay/native/mdns_route.c', '-o', RUNTIME / 'bin/mgu-airplay-mdns-route'])
     run(['gcc', '-O2', '-Wall', '-Wextra', '-Werror', '-I', mdns / 'mDNSShared',
          ROOT / 'airplay/native/mgu_dacp_resolve.c', '-L' + str(dns.parent), '-ldns_sd',
          '-o', RUNTIME / 'bin/mgu-dacp-resolve'])
@@ -189,13 +193,13 @@ def main():
         executable.chmod(0o755)
     (RUNTIME / 'lib/ld-linux-x86-64.so.2').chmod(0o755)
     record = {
-        'format': 'mgu-airplay-runtime-v1', 'version': '0.4.6', 'architecture': 'x86_64',
+        'format': 'mgu-airplay-runtime-v1', 'version': '0.4.7', 'architecture': 'x86_64',
         'uxplay': {'version': '1.73.7', 'revision': UX_REV},
         'mdns_client': {'version': '765.20.4', 'revision': MDNS_REV, 'daemon': 'existing MGU mdnsd'},
         'source_patch': {'file': 'lib/CMakeLists.txt', 'sha256': sha(cmake)},
         'connection_events_patch_sha256': sha(ux_source),
         'hls_renderer_patch_sha256': sha(video_source),
-        'features': ['detach', 'native-detach', 'playlist', 'video-modes', 'media-stop', 'audio-only', 'auto-media', 'audio-handoff', 'video-stretch', 'video-viewport', 'session-status', 'audio-metadata', 'music-control', 'full-disconnect'],
+        'features': ['detach', 'native-detach', 'playlist', 'video-modes', 'media-stop', 'audio-only', 'auto-media', 'audio-handoff', 'video-stretch', 'video-viewport', 'session-status', 'audio-metadata', 'music-control', 'full-disconnect', 'mdns-route'],
         'audio_profile_patch_sha256': sha(ROOT / 'airplay/tools/patch_audio_mode.py'),
         'audio_metadata_patch_sha256': sha(ROOT / 'airplay/tools/patch_audio_metadata.py'),
         'audio_metadata_sha256': sha(ROOT / 'airplay/native/mgu_audio_metadata.h'),
@@ -204,6 +208,8 @@ def main():
         'session_status_patch_sha256': sha(ROOT / 'airplay/tools/patch_connection_status.py'),
         'music_control_sha256': sha(ROOT / 'airplay/native/mgu_music_control.h'),
         'dacp_resolver_sha256': sha(ROOT / 'airplay/native/mgu_dacp_resolve.c'),
+        'mdns_route_sha256': sha(ROOT / 'airplay/native/mdns_route.c'),
+        'network_policy_sha256': sha(ROOT / 'airplay/network.js'),
         'hls_output_sha256': sha(ROOT / 'airplay/native/mgu_hls_output.h'),
         'crash_trace_sha256': sha(ROOT / 'airplay/native/mgu_crash_trace.h'),
         'direct_play_sha256': sha(ROOT / 'airplay/native/mgu_direct_play.h'),

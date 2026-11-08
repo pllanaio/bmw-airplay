@@ -109,9 +109,12 @@ Main-Senken zeigte den tatsächlich verwendeten Wert.
 CarPlay manuell im iDrive trennen und Hotspot/Uplink bestehen lassen.
 Danach den eigenen Empfänger „BMW AirPlay by pllana.io“ wählen.
 
-Keine automatische Unterdrückung, keine DevicePresentation-Umschaltung
-und keinen Dienst-Stopp als Workaround wieder einführen. Die Automatik
-wurde auf ausdrücklichen Wunsch aus App 0.2.6 entfernt.
+Die gewünschte parallele CarPlay-Sitzung benötigt eine bestätigte BMW-
+Fokusübergabe mit Eigentümer- und Prioritätsregeln. Dieser Vertrag liegt hier
+noch nicht vor. Ein Stoppen des CarPlay-Dienstes verursachte im früheren
+Versuch einen HeadUnit-Neustart und ist kein geeigneter Workaround.
+Auch ein automatisches Wiederöffnen der App bei jedem Fokusverlust würde
+Benutzerwechsel und OEM-Anzeigen übergehen.
 
 ## Breite Videos ruckeln
 
@@ -150,3 +153,22 @@ Die App im BMW-Menü ausdrücklich neu öffnen. Ein Start durch den App-Manager
 im reinen Konfigurationsmodus ist von einem Start über den App-Eintrag zu
 unterscheiden. In einem CONFIG_STATE-Start kann das SDK ohne RHMI-Oberfläche
 aktiv sein; daraus allein folgt noch kein Defekt des Empfängers.
+
+
+## Schnittstellen für CarPlay, Lenkradtasten und Tacho
+
+Ab 0.4.7 versucht das Backend beim Start einmalig, eine rein statische
+Schnittstellenübersicht unter
+`/var/opt/public/oap/oap_<APP-UID>/data/airplay/bmw-media-contract.json`
+zu speichern. Die APP-UID vergibt der Store auf der jeweiligen HeadUnit.
+Fehlende Leserechte oder ein fehlender Katalog verhindern nicht den Empfang.
+Die Datei enthält Typen und Methodenbeschreibungen, keine aktuellen
+Telefon-, Titel- oder Fahrzeugwerte. Sie ist privat und wird nicht ins
+öffentliche Repository oder automatisch an Dritte übertragen.
+
+Ein lokaler Entwicklungsaufbau kann denselben Bericht mit
+`node apps/pllana_airplay/inspect_bmw_contracts.js --output-dir <privates-Verzeichnis>`
+erstellen. Das bestehende Verzeichnis muss dem aufrufenden Benutzer gehören
+und Modus 0700 haben. Der Bericht beschreibt nur Kandidaten; er bestätigt
+keine tatsächlich nutzbare Fokus-, Medienanbieter-, Lenkrad- oder Tacho-API.
+Details und fehlende Verträge: [BMW_MEDIA_CONTRACT.md](BMW_MEDIA_CONTRACT.md).

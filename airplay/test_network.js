@@ -1,11 +1,11 @@
 'use strict';
 const assert = require('assert'), fs = require('fs'), path = require('path'), vm = require('vm');
 const EventEmitter = require('events');
-const { WLAN, chains, desiredRules, plan, ipv6Prefix } = require('./network');
+const { WLAN, chains, desiredRules, plan, ipv6Prefix, discoveryLease, mdnsSocketUids, routePlan, reconcileMdnsRoutes } = require('./network');
 const uid = 13007;
 const empty = () => chains.map(chain => ({ chain, present: true, text: '' }));
-function installed(interfaces) {
-    return chains.map(chain => ({ chain, present: true, text: desiredRules(chain, uid, interfaces).map((rule, i) =>
+function installed(interfaces, discovery) {
+    return chains.map(chain => ({ chain, present: true, text: desiredRules(chain, uid, interfaces, discovery).map((rule, i) =>
         '    ' + rule.replace('counter accept', 'counter packets 19 bytes 4028 accept') + ' # handle ' + (i + 1)).join('\n') }));
 }
 const initial = plan('apply', uid, empty(), {});
@@ -49,6 +49,116 @@ assert(removal.length > 0 && removal.every(line => /^delete rule .* handle \d+$/
 assert.throws(() => plan('apply', 0, empty(), {}), /invalid_receiver_uid/);
 assert.throws(() => plan('apply', uid, [], {}), /stock_firewall_missing/);
 assert.throws(() => plan('apply', uid, empty().map(c => Object.assign({}, c, { text: 'counter accept comment "mgu-airplay"' })), {}), /nft_rule_handle_missing/);
+
+// The iPhone can be both hotspot gateway and sender. No BMW AP is required:
+// Bonjour must use that exact station lease and the shared daemon's sockets.
+const hotspot = { interface: 'wlan1', ip: '172.20.10.2', prefix: 28 };
+const station = { wlan1: [{ address: hotspot.ip, family: 'IPv4', internal: false, cidr: hotspot.ip + '/28' }] };
+const discovery = discoveryLease(hotspot, station, [65534, 0, 65534]);
+assert.deepStrictEqual(discovery, { interface: 'wlan1', ip: '172.20.10.2', network: '172.20.10.0', prefix: 28, uids: [0, 65534] });
+assert.strictEqual(discoveryLease({ interface: 'vethuplink' }, {}, []), null, 'USB retains the existing BMW AP path');
+assert.strictEqual(discoveryLease(hotspot, {}, [0]), null, 'a stale lease cannot open another interface');
+assert.throws(() => discoveryLease(Object.assign({}, hotspot, { ip: '1.1.1.2', prefix: 24 }), station, [0]), /mdns_lease_invalid/);
+assert.throws(() => discoveryLease(hotspot, station, []), /mdns_service_unavailable/);
+const overlapping = Object.assign({}, station, { wlan_bridge: [{ address: '172.20.10.1', family: 'IPv4', internal: false, netmask: '255.255.255.0' }] });
+assert.throws(() => discoveryLease(hotspot, overlapping, [0]), /mdns_subnet_overlap/, 'ambiguous BMW/hotspot subnets are left intact');
+const safeAP = Object.assign({}, station, { wlan_bridge: [{ address: '192.168.43.1', family: 'IPv4', internal: false, cidr: '192.168.43.1/24' }] });
+assert(discoveryLease(hotspot, safeAP, [0]));
+const mdns = plan('apply', uid, empty(), station, discovery).filter(line => /5353/.test(line));
+assert(mdns.length > 0 && mdns.every(line => /(?:iifname|oifname) "wlan1"/.test(line)));
+assert(mdns.filter(line => /oifname/.test(line)).every(line => /ip ttl 255/.test(line)));
+assert(mdns.filter(line => /iifname/.test(line)).every(line => !/ip ttl/.test(line)),
+    'lease-bound multicast and legacy unicast queries may use a lower TTL; outgoing mDNS responses keep255');
+assert(mdns.filter(line => /oifname/.test(line)).every(line => /ip saddr 172\.20\.10\.2/.test(line) && /meta skuid (?:0|65534) udp sport 5353/.test(line)),
+    'even root-owned daemon sockets receive only bounded Bonjour output, never general Internet');
+assert(mdns.some(line => /ip daddr 172\.20\.10\.0\/28.*udp sport 5353 udp dport 1024-65535/.test(line)),
+    'legacy unicast queries from ephemeral ports receive a bounded unicast reply');
+assert(mdns.some(line => /ip daddr 224\.0\.0\.251.*udp dport 5353/.test(line)));
+assert(!mdns.some(line => /ip6|forward|policy|flush|vethuplink/.test(line)));
+assert.deepStrictEqual(plan('apply', uid, installed(station, discovery), station, discovery), [], 'Bonjour counters cause no periodic rewrites');
+assert(plan('apply', uid, installed(station, discovery), {}, null).some(line => /^delete rule /.test(line)), 'lease loss removes its tagged discovery rules');
+
+const procLinks = {
+    '/proc/12/exe': '/usr/sbin/mdnsd', '/proc/12/fd/3': 'socket:[101]', '/proc/12/fd/4': 'socket:[201]', '/proc/12/fd/5': 'socket:[202]',
+    '/proc/44/exe': '/tmp/mdnsd', '/proc/44/fd/3': 'socket:[101]', '/proc/44/fd/4': 'socket:[203]',
+    '/proc/55/exe': '/usr/sbin/other', '/proc/55/fd/3': 'socket:[101]', '/proc/55/fd/4': 'socket:[204]',
+    '/proc/66/exe': '/usr/sbin/mdnsd', '/proc/66/fd/4': 'socket:[205]',
+};
+const udp = (owner, inode) => ' 1: 00000000:14E9 00000000:0000 07 00000000:00000000 00:00000000 00000000 ' + owner + ' 0 ' + inode + ' 2 0';
+const procFs = {
+    readFileSync: file => file === '/proc/net/unix' ? '0000: 00000002 00000000 00010000 0001 01 101 /run/mdnsd/mdnsd_uds\n' :
+        file === '/proc/net/udp' ? [[0,201],[65534,202],[13007,203],[13008,204],[13009,205]].map(pair => udp(pair[0],pair[1])).join('\n') : '',
+    readlinkSync: file => procLinks[file],
+    statSync: file => ({ isFile: () => true, uid: file.indexOf('/44/') >= 0 ? 13007 : 0, mode: 0o100555 }),
+    readdirSync: file => file === '/proc' ? ['12','44','55','66','self'] : Object.keys(procLinks).filter(name => name.indexOf(file + '/') === 0).map(name => name.slice(file.length + 1)),
+};
+assert.deepStrictEqual(mdnsSocketUids(procFs), [0, 65534], 'prove listener+5353 inode ownership and use socket UID rather than daemon process UID');
+assert.deepStrictEqual(mdnsSocketUids(Object.assign({},procFs,{readFileSync:()=>''})), [], 'a missing BMW discovery service grants nothing');
+
+const oldRule = { uid: 0, network: '172.20.10.0', prefix: 28 };
+const nextRule = { uid: 65534, network: '192.168.5.0', prefix: 24 };
+const status = rules => ({ table: 110, priority: 1099, foreign: false, rules });
+assert.deepStrictEqual(routePlan([oldRule],status([oldRule]),[oldRule]),{remove:[],add:[]});
+assert.deepStrictEqual(routePlan([oldRule],status([oldRule]),[nextRule]),{remove:[oldRule],add:[nextRule]});
+assert.throws(()=>routePlan([],status([oldRule]),[oldRule]),/mdns_route_conflict/,'an unjournaled rule at our priority is foreign');
+assert.throws(()=>routePlan([oldRule],Object.assign(status([oldRule]),{foreign:true}),[oldRule]),/mdns_route_conflict/);
+assert.deepStrictEqual(routePlan([oldRule],Object.assign(status([oldRule,nextRule]),{foreign:true}),[]),{remove:[oldRule],add:[]},
+    'stop removes only its recorded exact rule even alongside a foreign collision');
+
+function routingIO() {
+    let state = null, temporary = null, kernel = [], serial = 0, failAdd = 0, collision = 0;
+    const mutations = [], journals = [];
+    const enoent = () => { const error = Error('missing'); error.code = 'ENOENT'; throw error; };
+    const io = { fs: {
+        constants: fs.constants,
+        openSync: (file, flags) => { assert(flags & fs.constants.O_NOFOLLOW); if (file.endsWith('/mdns-routes.json')) { if (!state) enoent(); return 1; } return 2; },
+        fstatSync: () => ({ isFile: () => true, nlink: 1, uid: 0, mode: 0o100600, size: state ? JSON.stringify(state).length : 0 }),
+        readFileSync: () => JSON.stringify(state), closeSync: () => {}, fchmodSync: (fd,mode) => assert.strictEqual(mode,0o600),
+        writeFileSync: (fd,text) => { temporary=JSON.parse(text); },
+        renameSync: () => { state=temporary; temporary=null; journals.push(state); }, unlinkSync: () => {},
+    }, cp: { spawnSync: (binary,args) => {
+        assert(binary.endsWith('/runtime/bin/mgu-airplay-mdns-route'));
+        if(args[0]==='show') return {status:0,stdout:JSON.stringify(status(kernel))};
+        const rule={uid:Number(args[1]),network:args[2],prefix:Number(args[3])};
+        assert(state.rules.some(item=>JSON.stringify(item)===JSON.stringify(rule)),'journal exact ownership before every kernel mutation');
+        mutations.push(args);
+        if(args[0]==='add') { if(++serial===failAdd) return {status:71}; if(serial===collision) { kernel.push(rule); return {status:72}; } kernel.push(rule); }
+        else kernel=kernel.filter(item=>JSON.stringify(item)!==JSON.stringify(rule));
+        return {status:0};
+    } } };
+    return {io,mutations,journals,getState:()=>state,getKernel:()=>kernel,setKernel:rules=>{kernel=rules;},fail:attempt=>{failAdd=attempt;},collide:attempt=>{collision=attempt;}};
+}
+{
+    const test=routingIO();
+    reconcileMdnsRoutes(discovery,test.io);
+    assert.strictEqual(test.getKernel().length,2);assert.strictEqual(test.journals.length,2);
+    const count=test.mutations.length,journalCount=test.journals.length;
+    reconcileMdnsRoutes(discovery,test.io);
+    assert.strictEqual(test.mutations.length,count);assert.strictEqual(test.journals.length,journalCount,'unchanged routes and journal are not rewritten');
+    const changedDiscovery=Object.assign({},discovery,{interface:'wlan0',ip:'192.168.5.2',network:'192.168.5.0',prefix:24,uids:[65534]});
+    reconcileMdnsRoutes(changedDiscovery,test.io);
+    assert.deepStrictEqual(test.getKernel(),[nextRule]);
+    test.setKernel(test.getKernel().concat([oldRule]));
+    reconcileMdnsRoutes(null,test.io);
+    assert.deepStrictEqual(test.getKernel(),[oldRule],'cleanup preserves an unjournaled foreign exact-shape rule');
+    assert.deepStrictEqual(test.getState().rules,[]);
+}
+{
+    const test=routingIO();test.fail(2);
+    assert.throws(()=>reconcileMdnsRoutes(discovery,test.io),/mdns_route_failed/);
+    assert.strictEqual(test.getKernel().length,1);assert.strictEqual(test.getState().rules.length,2,'a partial transaction keeps both intended exact keys journaled');
+    reconcileMdnsRoutes(discovery,test.io);
+    assert.strictEqual(test.getKernel().length,2,'the next tick completes a partially installed transaction');
+    reconcileMdnsRoutes(null,test.io);assert.deepStrictEqual(test.getKernel(),[]);
+}
+{
+    const test=routingIO();test.collide(2);
+    assert.throws(()=>reconcileMdnsRoutes(Object.assign({},discovery,{uids:[0,100,65534]}),test.io),/mdns_route_conflict/);
+    assert.strictEqual(test.getState().rules.length,1,'an EXCL collision removes the failed new intent from our ownership journal');
+    reconcileMdnsRoutes(null,test.io);
+    assert.deepStrictEqual(test.getKernel(),[{uid:100,network:'172.20.10.0',prefix:28}],
+        'stop leaves the exact rule another root actor installed during our transaction intact');
+}
 
 // Execute the supervisor with fake root/systemd I/O. Verify that the monitor
 // repairs after startup, reports errors/recovery and is cancelled on both

@@ -8,7 +8,7 @@ const MAX_BODY = 65536;
 
 function empty() {
     return { epoch: null, controls: { playPause: false, next: false, previous: false, shuffle: false, repeat: false },
-        playbackState: null, shuffle: null, repeat: null };
+        playbackState: null, shuffle: null, repeat: null, metadata: null };
 }
 function ipv6Words(address) {
     if (net.isIP(address) !== 6) return null;
@@ -61,22 +61,36 @@ function readSender(directory) {
     finally { if (fd !== undefined) fs.closeSync(fd); }
 }
 
+function metadataText(bytes) {
+    if (bytes.length > 4096) throw Error('music_bad_status');
+    const value = bytes.toString('utf8');
+    // A string tag cannot contain malformed UTF-8 or a truncated code point.
+    if (!Buffer.from(value, 'utf8').equals(bytes)) throw Error('music_bad_status');
+    return Array.from(value.replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/g, '')
+        .replace(/\s+/g, ' ').trim()).slice(0, 256).join('');
+}
+
 function parseStatus(body) {
-    if (!Buffer.isBuffer(body) || body.length < 8 || body.length > MAX_BODY || body.toString('ascii', 0, 4) !== 'cmst' ||
+    if (!Buffer.isBuffer(body) || body.length < 8 || body.length > MAX_BODY || body.toString('latin1', 0, 4) !== 'cmst' ||
         body.readUInt32BE(4) !== body.length - 8) throw Error('music_bad_status');
-    const fields = {};
+    const fields = {}, strings = {};
+    const stringTags = { cann: 'title', cana: 'artist', canl: 'album' };
     for (let offset = 8; offset < body.length;) {
         if (offset + 8 > body.length) throw Error('music_bad_status');
-        const tag = body.toString('ascii', offset, offset + 4), length = body.readUInt32BE(offset + 4);
+        const tag = body.toString('latin1', offset, offset + 4), length = body.readUInt32BE(offset + 4);
         offset += 8;
-        if (length > body.length - offset) throw Error('music_bad_status');
+        if (!/^[a-z0-9]{4}$/i.test(tag) || length > body.length - offset) throw Error('music_bad_status');
         if (['mstt', 'caps', 'cash', 'carp', 'caas', 'caar'].indexOf(tag) >= 0) {
             if (fields[tag] !== undefined || (length !== 1 && length !== 4)) throw Error('music_bad_status');
             fields[tag] = length === 1 ? body[offset] : body.readUInt32BE(offset);
+        } else if (Object.prototype.hasOwnProperty.call(stringTags, tag)) {
+            if (Object.prototype.hasOwnProperty.call(strings, tag)) throw Error('music_bad_status');
+            strings[tag] = metadataText(body.slice(offset, offset + length));
         }
         offset += length;
     }
     if (fields.mstt !== 200 || [2, 3, 4].indexOf(fields.caps) < 0) throw Error('music_bad_status');
+    fields.metadata = Object.keys(strings).length ? { title: strings.cann || '', artist: strings.cana || '', album: strings.canl || '' } : null;
     return fields;
 }
 
@@ -89,7 +103,8 @@ class MusicControls {
         this.state = empty(); this.disabled = {}; this.requests = []; this.resolver = null; this.closed = false;
     }
     directory() { return typeof this.options.directory === 'function' ? this.options.directory() : this.options.directory; }
-    snapshot() { return Object.assign({}, this.state, { controls: Object.assign({}, this.state.controls) }); }
+    snapshot() { return Object.assign({}, this.state, { controls: Object.assign({}, this.state.controls),
+        metadata: this.state.metadata ? Object.assign({}, this.state.metadata) : null }); }
     emit(fields) {
         const before = JSON.stringify(this.state);
         Object.assign(this.state, fields);
@@ -196,7 +211,7 @@ class MusicControls {
             const controls = { playPause: !this.disabled.playPause, next: !this.disabled.next, previous: !this.disabled.previous,
                 shuffle: !this.disabled.shuffle && shuffle !== null && (fields.caas & 2) === 2,
                 repeat: !this.disabled.repeat && repeat !== null && (fields.caar & 6) === 6 };
-            this.emit({ controls, playbackState: { 2: 'stopped', 3: 'paused', 4: 'playing' }[fields.caps], shuffle, repeat });
+            this.emit({ controls, playbackState: { 2: 'stopped', 3: 'paused', 4: 'playing' }[fields.caps], shuffle, repeat, metadata: fields.metadata });
             return this.snapshot();
         });
     }
