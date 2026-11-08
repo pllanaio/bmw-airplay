@@ -92,19 +92,12 @@ function desiredRules(chain, uid, interfaces, discovery) {
     }
     if (discovery && (chain[0] === 'ip' || chain[0] === 'inet')) {
         const local = discovery.network + '/' + discovery.prefix;
-        if (output) {
+        if (output) for (const socketUid of discovery.uids) {
             const start = 'oifname "' + discovery.interface + '" ip saddr ' + discovery.ip + ' ip daddr ';
-            for (const socketUid of discovery.uids) {
-                result.push(start + '224.0.0.251 ip ttl 255 meta skuid ' + socketUid +
-                    ' udp sport 5353 udp dport 5353 counter accept comment "' + tag + '"');
-                result.push(start + local + ' ip ttl 255 meta skuid ' + socketUid +
-                    ' udp sport 5353 udp dport 1024-65535 counter accept comment "' + tag + '"');
-            }
-            // The app's uplink responder: multicast announcements and answers,
-            // unicast answers to QU (port 5353) and legacy queries, only from
-            // the uplink address into the hotspot subnet.
-            result.push(start + '224.0.0.251 meta skuid ' + uid + ' udp sport 5353 udp dport 5353 counter accept comment "' + tag + '"');
-            result.push(start + local + ' meta skuid ' + uid + ' udp sport 5353 counter accept comment "' + tag + '"');
+            result.push(start + '224.0.0.251 ip ttl 255 meta skuid ' + socketUid +
+                ' udp sport 5353 udp dport 5353 counter accept comment "' + tag + '"');
+            result.push(start + local + ' ip ttl 255 meta skuid ' + socketUid +
+                ' udp sport 5353 udp dport 1024-65535 counter accept comment "' + tag + '"');
         } else {
             for (const destination of ['224.0.0.251', discovery.ip]) result.push('iifname "' + discovery.interface +
                 '" ip saddr ' + local + ' ip daddr ' + destination +
@@ -188,9 +181,7 @@ function discoveryLease(lease, interfaces, uids) {
             if (other && network.first <= other.last && other.first <= network.last) throw Error('mdns_subnet_overlap');
         }
     }
-    // The BMW mdnsd may not serve the uplink at all; the app's own uplink
-    // responder (mdns_responder.js) needs the rules regardless.
-    if (!Array.isArray(uids) || uids.length > 16 || uids.some(u => !Number.isInteger(u) || u < 0 || u > 65535))
+    if (!Array.isArray(uids) || !uids.length || uids.length > 16 || uids.some(u => !Number.isInteger(u) || u < 0 || u > 65535))
         throw Error('mdns_service_unavailable');
     return { interface: lease.interface, ip: lease.ip, network: ipv4Text(network.first), prefix: lease.prefix,
         uids: Array.from(new Set(uids)).sort((a, b) => a - b) };

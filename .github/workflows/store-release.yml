@@ -81,26 +81,12 @@ jobs:
           sh airplay/tools/test_lifecycle.sh
           python3 airplay/tools/test_hls.py --stretch
           python3 airplay/test_mdns_route.py --binary .build/airplay/runtime/bin/mgu-airplay-mdns-route --cli-only
-      - name: UxPlay exports its Bonjour records for the uplink responder
-        run: |
-          R=.build/airplay/runtime
-          make -C .local/airplay/mDNSResponder/mDNSPosix os=linux Daemon > mdnsd-build.log 2>&1 || { tail -30 mdnsd-build.log; exit 1; }
-          .local/airplay/mDNSResponder/mDNSPosix/build/prod/mdnsd
-          stop_mdnsd() { for p in /proc/[0-9]*; do [ "$(cat "$p/comm" 2>/dev/null)" = mdnsd ] && kill "${p#/proc/}"; done; true; }
-          trap stop_mdnsd EXIT
-          sleep 2
-          GST_PLUGIN_SYSTEM_PATH_1_0= GST_PLUGIN_PATH_1_0="$R/plugins" GST_REGISTRY="$PWD/registry.bin" \
-            timeout 8 "$R/lib/ld-linux-x86-64.so.2" --library-path "$R/lib" "$R/bin/uxplay" \
-            -n "CI Receiver" -nh -vs 0 -as 0 -p 7100 > uxplay-dnssd.log 2>&1 || true
-          grep -E '^MGU_DNSSD airplay 710[0-2] [0-9a-f]+ [0-9a-f]+$' uxplay-dnssd.log || { tail -40 uxplay-dnssd.log; exit 1; }
-          grep -E '^MGU_DNSSD raop 710[0-2] [0-9a-f]+ [0-9a-f]+$' uxplay-dnssd.log
-          node -e "const l=require('fs').readFileSync('uxplay-dnssd.log','utf8').split('\\n').find(x=>x.startsWith('MGU_DNSSD airplay'));const p=l.split(' ');const n=Buffer.from(p[3],'hex').toString();const t=Buffer.from(p[4],'hex').toString('latin1');if(n!=='CI Receiver'||!/deviceid=/.test(t)||!/pk=/.test(t))process.exit(1);console.log('exported',n)"
       - name: JavaScript and Store contract tests
         run: |
           node airplay/test_audio_route.js && node airplay/test_backend.js && node airplay/test_receiver.js
           node airplay/test_receiver_disconnect.js
           node airplay/test_frontend_lifecycle.js && node airplay/test_video_bridge.js && node airplay/test_logo_bridge.js
-          node airplay/test_backend_client.js && node airplay/test_diagnose.js && node airplay/test_network.js && node airplay/test_resolver.js && node airplay/test_mdns.js
+          node airplay/test_backend_client.js && node airplay/test_diagnose.js && node airplay/test_network.js && node airplay/test_resolver.js
           node airplay/test_audio_metadata.js && node airplay/test_music_artwork_bridge.js && node airplay/test_music_view.js
           node airplay/test_music_controls.js
           node airplay/test_bmw_media.js && node airplay/test_carplay_focus.js
