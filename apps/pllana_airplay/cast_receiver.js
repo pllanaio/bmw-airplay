@@ -145,6 +145,12 @@ class CastReceiver extends EventEmitter {
         socket.on('close', () => this.endSession('phone_disconnected'));
         const touch = () => { clearTimeout(session.idle); session.idle = setTimeout(() => this.endSession('phone_timeout'), IDLE_MS); };
         socket.on('data', touch); touch();
+        // Once a second: what the car shows, displayed in the phone app.
+        session.status = setInterval(() => {
+            if (socket.destroyed) return;
+            const f = session.frame;
+            try { socket.write(JSON.stringify({ type: 'status', shown: f ? f.sequence : 0, width: f ? f.width : 0, height: f ? f.height : 0 }) + '\n'); } catch (e) {}
+        }, 1000);
         session.poll = setInterval(() => {
             const frame = frameHeader(file);
             const key = frame && [frame.generation, frame.sequence, frame.width, frame.height].join(':');
@@ -168,7 +174,7 @@ class CastReceiver extends EventEmitter {
         const s = this.session;
         if (!s || s.ended) return Promise.resolve();
         s.ended = true; this.session = null;
-        clearInterval(s.poll); clearTimeout(s.idle);
+        clearInterval(s.poll); clearInterval(s.status); clearTimeout(s.idle);
         if (s.socket && !s.socket.destroyed) {
             if (reason === 'stopped' || reason === 'ended_by_driver') try { s.socket.end(JSON.stringify({ type: 'stop' }) + '\n'); } catch (e) {}
             setTimeout(() => { if (!s.socket.destroyed) s.socket.destroy(); }, 500);

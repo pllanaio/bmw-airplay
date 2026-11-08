@@ -122,7 +122,8 @@ mgu.run({ async start(ctx) {
         } else if (transitioning || resizing) {
             c.clear('#000000');
             logo.draw(c, size.w / 2 - 32, size.h / 2 - 70, 64, 64);
-            c.text(state.phase === 'loading' || resizing ? 'Video wird geladen …' : 'Bildschirmspiegelung wird fortgesetzt …',
+            c.text(state.sender === 'android' && state.mode === 'mirror' ? 'Android verbunden – warte auf das erste Bild …' :
+                state.phase === 'loading' || resizing ? 'Video wird geladen …' : 'Bildschirmspiegelung wird fortgesetzt …',
                 size.w / 2, size.h / 2 + 32, 28, '#c0cedd', { font: 'airplay', align: 'center' });
         } else {
             // While the receiver service is unreachable, say why (every 2 s).

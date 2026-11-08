@@ -1,6 +1,6 @@
 {
   "name": "bmw-airplay-by-pllana-io",
-  "version": "0.6.0",
+  "version": "0.6.1",
   "private": true,
   "description": "Experimental native BMW MGU AirPlay receiver by Leon Pllana IT-Solutions",
   "license": "GPL-3.0-or-later",

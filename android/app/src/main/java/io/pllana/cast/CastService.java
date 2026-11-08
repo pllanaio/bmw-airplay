@@ -56,6 +56,7 @@ public final class CastService extends Service {
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
         if (intent == null || ACTION_STOP.equals(intent.getAction())) { shutdown("Beendet"); return START_NOT_STICKY; }
+        CastLog.add("Start: Android " + Build.VERSION.RELEASE + " (API " + Build.VERSION.SDK_INT + "), " + Build.MANUFACTURER + " " + Build.MODEL);
         if (projection != null) return START_NOT_STICKY;
         // Android 14+: the foreground service must run before the projection starts.
         Notification notification = notification("Verbinde mit dem BMW …");
@@ -64,10 +65,12 @@ public final class CastService extends Service {
         MediaProjectionManager manager = (MediaProjectionManager) getSystemService(Context.MEDIA_PROJECTION_SERVICE);
         Intent data = Build.VERSION.SDK_INT >= 33 ? intent.getParcelableExtra(EXTRA_RESULT_DATA, Intent.class) : intent.getParcelableExtra(EXTRA_RESULT_DATA);
         try { projection = manager.getMediaProjection(intent.getIntExtra(EXTRA_RESULT_CODE, 0), data); }
-        catch (RuntimeException e) { projection = null; }
+        catch (RuntimeException e) { CastLog.error("MediaProjection", e); projection = null; }
         if (projection == null) { shutdown("Bildschirmaufnahme nicht erlaubt"); return START_NOT_STICKY; }
+        CastLog.add("Bildschirmaufnahme erlaubt");
         projection.registerCallback(new MediaProjection.Callback() {
-            @Override public void onStop() { main.post(() -> shutdown("Aufnahme beendet")); }
+            @Override public void onStop() { CastLog.add("Android hat die Aufnahme beendet"); main.post(() -> shutdown("Aufnahme beendet")); }
+            @Override public void onCapturedContentVisibilityChanged(boolean visible) { CastLog.add("Geteilter Inhalt " + (visible ? "sichtbar" : "verdeckt")); }
             @Override public void onCapturedContentResize(int width, int height) {
                 // Single-app sharing (Android 14+): follow the app window size.
                 ScreenEncoder e = encoder;
@@ -78,7 +81,10 @@ public final class CastService extends Service {
         final int port = intent.getIntExtra(EXTRA_PORT, 7104);
         final boolean withAudio = intent.getBooleanExtra(EXTRA_AUDIO, true);
         publish("Verbinde mit dem BMW …", true);
-        new Thread(() -> run(host, port, code, withAudio), "pllana-cast-start").start();
+        new Thread(() -> {
+            try { run(host, port, code, withAudio); }
+            catch (Throwable t) { CastLog.error("Unerwarteter Fehler", t); main.post(() -> shutdown("Fehler: " + t.getClass().getSimpleName())); }
+        }, "pllana-cast-start").start();
         return START_NOT_STICKY;
     }
 
@@ -93,6 +99,7 @@ public final class CastService extends Service {
     private void run(String host, int port, String code, boolean withAudio) {
         Point size = screenSize();
         int[] target = ScreenEncoder.target(size.x, size.y);
+        CastLog.add("Bildschirm " + size.x + "×" + size.y + " → " + target[0] + "×" + target[1] + ", verbinde " + host + ":" + port);
         connection = new CastConnection();
         try {
             connection.connect(host, port, code, Build.MANUFACTURER + " " + Build.MODEL, withAudio, target[0], target[1], new CastConnection.Listener() {
@@ -101,6 +108,7 @@ public final class CastService extends Service {
                 @Override public void onKeyFrameNeeded() { ScreenEncoder e = encoder; if (e != null) e.requestKeyFrame(); }
             });
         } catch (CastConnection.RejectedException e) {
+            CastLog.add("Vom Auto abgelehnt: " + e.code);
             String text = "code_wrong".equals(e.code) ? "Falscher Code – bitte den Code vom iDrive-Display eingeben"
                     : "busy".equals(e.code) ? "Ein anderes Handy überträgt gerade"
                     : "not_ready".equals(e.code) ? "Im Auto zuerst „Verbinden“ drücken"
@@ -109,25 +117,51 @@ public final class CastService extends Service {
             main.post(() -> shutdown(text));
             return;
         } catch (Exception e) {
-            main.post(() -> shutdown("BMW nicht erreichbar"));
+            CastLog.error("Verbindung", e);
+            main.post(() -> shutdown("BMW nicht erreichbar (" + e.getClass().getSimpleName() + ")"));
             return;
         }
+        CastLog.add("Mit " + connection.receiverName() + " verbunden, Code akzeptiert");
         if (stopping) { connection.close("stopped"); return; }
         try {
             encoder = new ScreenEncoder(projection, connection, getResources().getDisplayMetrics().densityDpi);
             encoder.start(size.x, size.y);
         } catch (Exception e) {
-            Log.e(TAG, "encoder", e);
+            CastLog.error("Videokodierung", e);
             main.post(() -> shutdown("Videokodierung nicht verfügbar"));
             return;
         }
         boolean sound = withAudio && (audio = new AudioCapture(connection)).start(projection);
+        CastLog.add(withAudio ? (sound ? "Ton wird übertragen" : "Ton nicht verfügbar (App verbietet Mitschnitt oder keine Berechtigung)") : "Ton aus");
+        startTicker(withAudio && sound);
         main.post(this::watchRotation);
         String name = connection.receiverName().isEmpty() ? "BMW" : connection.receiverName();
         String text = "Überträgt an " + name + (withAudio && !sound ? " (ohne Ton)" : "");
         publish(text, true);
         NotificationManager nm = getSystemService(NotificationManager.class);
         nm.notify(1, notification(text));
+    }
+
+    /** Once per second: what is sent and what the car shows. */
+    private void startTicker(boolean sound) {
+        final long[] last = { 0, 0, 0, -1 };
+        Runnable tick = new Runnable() {
+            @Override public void run() {
+                CastConnection c = connection; ScreenEncoder e = encoder;
+                if (c == null || e == null || stopping) return;
+                long sent = c.framesSent.get(), bytes = c.bytesSent.get(), encoded = e.encoded, shown = c.carShown;
+                String car = shown < 0 ? "Auto: noch keine Rückmeldung" : shown == 0 ? "Auto: wartet auf Bild"
+                        : "Auto zeigt " + Math.max(0, shown - Math.max(0, last[3])) + " B/s (" + c.carWidth + "×" + c.carHeight + ")";
+                String text = "Überträgt an " + (c.receiverName().isEmpty() ? "BMW" : c.receiverName()) + "\n" + e.width() + "×" + e.height()
+                        + " · kodiert " + (encoded - last[0]) + " B/s · gesendet " + (sent - last[1]) + " B/s · " + ((bytes - last[2]) * 8 / 1000) + " kbit/s"
+                        + (c.framesDropped.get() > 0 ? " · verworfen " + c.framesDropped.get() : "") + "\n" + car + (sound ? " · Ton an" : " · ohne Ton");
+                if (encoded == 0 && last[0] == 0 && sent == 0) text += "\nAchtung: Android liefert noch kein Bild";
+                last[0] = encoded; last[1] = sent; last[2] = bytes; last[3] = shown;
+                publish(text, true);
+                main.postDelayed(this, 1000);
+            }
+        };
+        main.postDelayed(tick, 1000);
     }
 
     private void watchRotation() {
@@ -163,6 +197,7 @@ public final class CastService extends Service {
     private void shutdown(String reason) {
         if (stopping) return;
         stopping = true;
+        CastLog.add("Beendet: " + reason);
         if (rotation != null) { ((DisplayManager) getSystemService(Context.DISPLAY_SERVICE)).unregisterDisplayListener(rotation); rotation = null; }
         final ScreenEncoder e = encoder; final AudioCapture a = audio; final CastConnection c = connection; final MediaProjection p = projection;
         encoder = null; audio = null; connection = null; projection = null;
