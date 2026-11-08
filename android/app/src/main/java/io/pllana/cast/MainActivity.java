@@ -47,13 +47,13 @@ public final class MainActivity extends Activity implements CastService.StatusLi
         root.setOrientation(LinearLayout.VERTICAL);
         root.setPadding(pad, pad, pad, pad);
 
-        TextView title = text("pllana Cast", 28);
+        TextView title = text("PllanaCast for BMW", 28);
         title.setTypeface(Typeface.DEFAULT_BOLD);
         root.addView(title);
         root.addView(text("Bildschirm und Ton deines Android-Handys auf dem BMW-Display.", 15));
 
         root.addView(heading("1. Im Auto"));
-        root.addView(text("In der App „BMW AirPlay by pllana.io“ auf „Verbinden“ drücken. Das Handy ist im BMW-WLAN, oder die HeadUnit nutzt den Hotspot dieses Handys.", 15));
+        root.addView(text("In der App „PllanaCast for BMW“ auf „Verbinden“ drücken. Das Handy ist im BMW-WLAN, oder die HeadUnit nutzt den Hotspot dieses Handys.", 15));
 
         root.addView(heading("2. BMW wählen"));
         search = new Button(this);
@@ -99,7 +99,7 @@ public final class MainActivity extends Activity implements CastService.StatusLi
         copy.setAllCaps(false);
         copy.setOnClickListener(v -> {
             android.content.ClipboardManager clipboard = getSystemService(android.content.ClipboardManager.class);
-            clipboard.setPrimaryClip(android.content.ClipData.newPlainText("pllana Cast Diagnose", CastLog.text() + "\n" + status.getText()));
+            clipboard.setPrimaryClip(android.content.ClipData.newPlainText("PllanaCast for BMW Diagnose", CastLog.text() + "\n" + status.getText()));
             status.setText(status.getText() + "\n(Diagnose kopiert)");
         });
         root.addView(copy);

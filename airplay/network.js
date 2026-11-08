@@ -64,7 +64,7 @@ function desiredRules(chain, uid, interfaces, discovery) {
     const output = /output$/.test(chain[2]), result = [];
     for (const n of networks(interfaces)) for (const protocol of ['tcp', 'udp']) {
         if (chain[0] !== 'inet' && chain[0] !== n.family) continue;
-        // 7100-7102 AirPlay, 7103 DLNA renderer, 7104 pllana Cast (Android screen).
+        // 7100-7102 AirPlay, 7103 DLNA renderer, 7104 PllanaCast for BMW (Android screen).
         const rule = output ? 'oifname "' + n.name + '" ' + n.family + ' daddr ' + n.prefix + ' meta skuid ' + uid + ' ' + protocol + ' sport 7100-7104' :
             'iifname "' + n.name + '" ' + n.family + ' saddr ' + n.prefix + ' ' + protocol + ' dport 7100-7104';
         result.push(rule + ' counter accept comment "' + tag + '"');

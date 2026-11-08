@@ -1,5 +1,5 @@
 #!/bin/bash
-# pllana Cast end to end in the Android emulator (CI): install the app, start
+# PllanaCast for BMW end to end in the Android emulator (CI): install the app, start
 # a cast to the host receiver (10.0.2.2:7104), answer the consent dialog,
 # then check that real H.264 frames arrived and decode.
 set -u

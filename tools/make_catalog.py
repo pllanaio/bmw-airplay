@@ -25,11 +25,11 @@ def main():
     app = dist / ('pllana_airplay@%s.tgz' % args.app_version)
     runtime = dist / ('pllana-airplay-receiver@%s.tgz' % args.runtime_version)
     catalog = {'schema': 2, 'components': [
-        {'id': 'pllana-airplay-receiver', 'kind': 'tool', 'title': 'AirPlay receiver',
-         'description': 'UxPlay receiver, video and BMW audio output for BMW AirPlay by pllana.io',
+        {'id': 'pllana-airplay-receiver', 'kind': 'tool', 'title': 'PllanaCast for BMW Empfänger',
+         'description': 'UxPlay receiver, video and BMW audio output for PllanaCast for BMW',
          'author': 'Leon Pllana IT-Solutions', 'version': args.runtime_version, 'artifact': artifact(runtime, args.tag),
          'requires': {'mgu-deploy': '0.7.17'}, 'uninstallable': True, 'mguHmi': ['ID7']},
-        {'id': 'pllana_airplay', 'kind': 'app', 'title': 'BMW AirPlay by pllana.io',
+        {'id': 'pllana_airplay', 'kind': 'app', 'title': 'PllanaCast for BMW',
          'description': 'iPhone screen mirroring and YouTube/AirPlay video on the iDrive display with BMW audio',
          'author': 'Leon Pllana IT-Solutions', 'version': args.app_version, 'artifact': artifact(app, args.tag),
          'requires': {'pllana-airplay-receiver': args.runtime_version, 'mgu-uplink': '0.7.3', 'mgu-render': '0.6.11', 'mgu-deploy': '0.7.17'},

@@ -186,7 +186,7 @@ public final class CastService extends Service {
         PendingIntent open = PendingIntent.getActivity(this, 2, new Intent(this, MainActivity.class), PendingIntent.FLAG_IMMUTABLE);
         return new Notification.Builder(this, CHANNEL)
                 .setSmallIcon(android.R.drawable.ic_menu_upload)
-                .setContentTitle("pllana Cast")
+                .setContentTitle("PllanaCast for BMW")
                 .setContentText(text)
                 .setContentIntent(open)
                 .setOngoing(true)

@@ -150,7 +150,7 @@ const turn = () => new Promise(resolve=>setImmediate(resolve));
     assert.deepStrictEqual(dlna.actions,['stop','toggle','next'],'BMW music buttons control Android music; stale epochs are ignored');
     assert.strictEqual(remote.actions.length,0,'Android music never reaches the iPhone remote');
     dlna.set(null);
-    // pllana Cast (Android screen): authenticated with the code on the display.
+    // PllanaCast for BMW (Android screen): authenticated with the code on the display.
     assert.strictEqual(screen.running,true,'the screen receiver runs with reception');
     assert.strictEqual(screen.options.code(),receiver.state.pin||receiver.lastPassword);
     assert.strictEqual(dlna.options.castPort,7104,'SSDP advertises the screen receiver');

@@ -58,7 +58,7 @@ function drawMusic(c, state, artwork, onControl) {
     }
     text(c, fit(c, music.title || 'Deine Musik.', 45, 1158, 46), 394, 171, 45, COLORS.ink, { literal: true });
     text(c, fit(c, music.artist || (state.connected ? 'Musik am iPhone auswählen' : state.pin ? 'AirPlay-Audio am iPhone wählen' : 'Unten „Verbinden“ drücken.'), 29, 1155, 67), 397, 224, 29, COLORS.muted, { literal: true });
-    text(c, fit(c, music.album || (state.connected ? 'AirPlay-Audio verbunden' : state.pin && !music.title ? 'BMW AirPlay by pllana.io · Code ' + state.pin : ''), 25, 1155, 76), 397, 266, 25, COLORS.muted, { literal: true });
+    text(c, fit(c, music.album || (state.connected ? 'AirPlay-Audio verbunden' : state.pin && !music.title ? 'PllanaCast for BMW · Code ' + state.pin : ''), 25, 1155, 76), 397, 266, 25, COLORS.muted, { literal: true });
     musicButton(c, 394, 152, 'Zurück', 'previous', controls.previous, false, onControl);
     musicButton(c, 560, 194, music.playbackState === 'playing' ? 'Pause' : music.playbackState === 'paused' || music.playbackState === 'stopped' ? 'Abspielen' : 'Play / Pause', 'playPause', controls.playPause, false, onControl);
     musicButton(c, 768, 152, 'Weiter', 'next', controls.next, false, onControl);
@@ -95,7 +95,7 @@ function drawHome(c, state, notice, logo, artwork, onControl) {
     c.gradientRect(0, 0, 1600, 520, [[0, '#111d2c'], [0.68, COLORS.bg], [1, '#0b141d']]);
     if (logo) logo.draw(c, 38, 18, 64, 64);
     else c.image(LOGO, 38, 18, 64, 64);
-    text(c, 'BMW AirPlay by pllana.io', 119, 58, 24, COLORS.blue, { spacing: 1 });
+    text(c, 'PllanaCast for BMW', 119, 58, 24, COLORS.blue, { spacing: 1 });
     const audioOnly = state.mode === 'audio' || state.profile === 'audio', audioPlaying = state.phase === 'audio';
     const waiting = state.phase === 'waiting', loading = state.phase === 'loading';
     const busy = state.phase === 'starting' || state.phase === 'stopping' || state.phase === 'recovering' || loading;
@@ -115,7 +115,7 @@ function drawHome(c, state, notice, logo, artwork, onControl) {
 
     c.card(1054, 100, 498, 341, 26, [[0, '#1b2e43'], [1, '#101b29']]);
     c.strokeRoundRect(1054, 100, 498, 341, 26, 1, '#30475e');
-    text(c, connected ? (android ? 'Dein Android ist verbunden.' : 'Dein iPhone ist verbunden.') : state.pin ? 'BMW AirPlay by pllana.io' : 'Bereit, wenn du es bist.', 1084, 151, 29, COLORS.ink);
+    text(c, connected ? (android ? 'Dein Android ist verbunden.' : 'Dein iPhone ist verbunden.') : state.pin ? 'PllanaCast for BMW' : 'Bereit, wenn du es bist.', 1084, 151, 29, COLORS.ink);
     if (connected) {
         const media = state.mode === 'hls' ? (loading ? 'Video wird geladen …' : 'Video läuft') : state.mode === 'mirror' && state.frame ? 'Bildschirmspiegelung aktiv' : 'Wartet auf Musik oder Video';
         text(c, media, 1084, 194, 25, COLORS.mint);
@@ -132,7 +132,7 @@ function drawHome(c, state, notice, logo, artwork, onControl) {
             text(c, code[i], left + i * (cell + gap) + cell / 2, 283, 50, '#ffffff', { align: 'center', literal: true });
         }
         text(c, 'BMW-WLAN oder gemeinsames WLAN.', 1084, 356, 23, COLORS.muted);
-        text(c, state.directVideo === false ? 'Ohne Uplink: Video bleibt gespiegelt.' : 'Android: App „pllana Cast“ + Code', 1084, 395, 23, COLORS.muted);
+        text(c, state.directVideo === false ? 'Ohne Uplink: Video bleibt gespiegelt.' : 'Android: „PllanaCast for BMW“ + Code', 1084, 395, 23, COLORS.muted);
     } else {
         airplay(c, 1258, 201, 90, COLORS.blue);
         text(c, busy ? 'Verbindung wird vorbereitet.' : 'Unten „Verbinden“ drücken.', 1303, 337, 25, COLORS.ink, { align: 'center' });

@@ -75,7 +75,7 @@ const value = (body, name) => { const m = new RegExp('<' + name + '>([\\s\\S]*?)
     // Description and service descriptions.
     const description = await request(port, 'GET', '/dlna/description.xml');
     assert.strictEqual(description.status, 200);
-    assert(/<friendlyName>BMW AirPlay by pllana\.io<\/friendlyName>/.test(description.body) && /MediaRenderer:1/.test(description.body));
+    assert(/<friendlyName>PllanaCast for BMW<\/friendlyName>/.test(description.body) && /MediaRenderer:1/.test(description.body));
     assert(/<modelNumber>9\.9\.9<\/modelNumber>/.test(description.body));
     for (const service of ['AVTransport', 'RenderingControl', 'ConnectionManager'])
         assert.strictEqual((await request(port, 'GET', '/dlna/' + service + '.xml')).status, 200);

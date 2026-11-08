@@ -41,7 +41,7 @@ Die App-Dateien liegen in apps/pllana_airplay.
 | music_controls.js | An den gekoppelten Sender gebundene DACP-Steuerung |
 | brand_logo.js | Komprimierte Pixel des eigenen Logos |
 
-Der sichtbare Name lautet durchgängig „BMW AirPlay by pllana.io“.
+Der sichtbare Name lautet durchgängig „PllanaCast for BMW“.
 Das OAP-Symbol hat 140×140 Pixel und passt in den BMW-Auswahlrahmen.
 Die Verbindungssicht ist auf 1600×520 logischen Pixeln aufgebaut.
 Im randlosen nativen Layout meldet `contentSize()` den vollständigen

@@ -23,7 +23,7 @@ const { Receiver } = require('../apps/pllana_airplay/receiver');
         assert.strictEqual(fs.readFileSync(initialViewport).readUInt32LE(4),720,'unknown canvas defaults to1920x720');
         assert(calls[0].args.includes('-hls'), 'advertise the actual HLS player');
         assert.strictEqual(calls[0].args[calls[0].args.indexOf('-hls') + 1], '2', 'use legacy HLS parser for YouTube codec negotiation');
-        assert.strictEqual(calls[0].args[calls[0].args.indexOf('-n') + 1], 'BMW AirPlay by pllana.io');
+        assert.strictEqual(calls[0].args[calls[0].args.indexOf('-n') + 1], 'PllanaCast for BMW');
         assert.strictEqual(calls[0].options.env.MGU_HLS_AUDIO_SINK, 'fakesink');
         assert(!r.start(), 'no overlapping receiver');
         const mac = calls[0].args[calls[0].args.indexOf('-m') + 1];

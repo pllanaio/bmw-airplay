@@ -2,13 +2,13 @@
 
 ## Einordnung
 
-BMW AirPlay by pllana.io ist ein funktionierender Entwicklungsprototyp für
+PllanaCast for BMW ist ein funktionierender Entwicklungsprototyp für
 eine konkrete BMW-MGU/iDrive-7-Headunit. Er kombiniert eine native OAP-App mit
 einem separat installierten UxPlay-Empfänger und BMW-Audiorouting.
 Die bisherige Erprobung ist keine Freigabe für alle MGU-Hardwarestände,
 Fahrzeugausstattungen, iPhone-Apps oder iOS-Versionen.
 
-Der vorbereitete Quellstand für App und Laufzeit ist **0.6.0**. Die neuen
+Der vorbereitete Quellstand für App und Laufzeit ist **0.6.2**. Die neuen
 Änderungen sind lokal geprüft und noch nicht am Fahrzeug abgenommen. Die
 Fahrzeugbestätigungen weiter unten beziehen sich auf die dort genannten
 älteren Versionen.
@@ -17,9 +17,18 @@ Der historische Git-Tag v0.2.6 bezeichnet den ersten veröffentlichten
 Quellcode-Snapshot. Die nachträgliche Store-Anbindung und diese ausführliche
 Dokumentation stehen auf main. Der Tag wird dafür nicht nachträglich verschoben.
 
-## Änderungen in 0.6.0 – pllana Cast für Android (z. B. Pixel)
+## Änderungen in 0.6.2 – neuer Name „PllanaCast for BMW“
 
-- Neue Android-App **pllana Cast** (`android/`, APK im Release): überträgt
+HeadUnit-App, Empfänger, Android-App, der im Netz sichtbare Name (AirPlay,
+DLNA, Android-App) sowie Store- und Release-Titel heißen jetzt
+**PllanaCast for BMW**. Die technischen Kennungen (`pllana_airplay`,
+`pllana-airplay-receiver`, `io.pllana.cast`) bleiben, damit Updates über die
+bestehende Installation laufen. Am iPhone erscheint der Empfänger unter dem
+neuen Namen; eine bestehende Kopplung bleibt gültig.
+
+## Änderungen in 0.6.0 – PllanaCast for BMW für Android (z. B. Pixel)
+
+- Neue Android-App **PllanaCast for BMW** (`android/`, APK im Release): überträgt
   Bildschirm und Ton per WLAN oder Handy-Hotspot, für Handys ohne Miracast/
   DLNA-Spiegelung (Pixel: „Übertragen“ ist nur Google Cast).
 - HeadUnit: Empfänger auf TCP 7104, Anmeldung mit dem Code vom Display,
@@ -48,7 +57,7 @@ Details in [ANDROID.md](ANDROID.md).
 
 - Neuer DLNA/UPnP-MediaRenderer im Backend: Android-Apps mit „Streamen auf“
   (Samsung Galerie/Musik, BubbleUPnP, Web Video Caster, VLC, …) finden
-  „BMW AirPlay by pllana.io“ im BMW-WLAN und über den Handy-Hotspot.
+  „PllanaCast for BMW“ im BMW-WLAN und über den Handy-Hotspot.
 - Neuer nativer Player `mgu-media-player` (GStreamer playbin) mit derselben
   Ausgabe wie AirPlay-Direktvideo: Vollbild, Skalierung, BMW-Ton.
 - Musik vom Android-Handy erscheint in der Musikansicht; Play/Pause und
@@ -295,7 +304,7 @@ von später ergänzten Implementierungen und lokalen Simulationen zu unterscheid
 | iPhone-Bildschirmspiegelung | Ja | Keine Zusage für DRM-Inhalte |
 | Ton eines Fotos-App-Videos über BMW-Lautsprecher | Ja | Kanalzuordnung noch nicht vollständig qualifiziert |
 | „Trennen“ beendet die Übertragung sauber | Ja | Basistest erfolgte bereits vor den späteren HLS-Arbeiten |
-| App-Titel und angepasstes App-Symbol | Ja | Titel exakt „BMW AirPlay by pllana.io“ |
+| App-Titel und angepasstes App-Symbol | Ja | Titel exakt „PllanaCast for BMW“ |
 | Entfernung des orangefarbenen Titelrests und der rechten schwarzen Leiste | Ja | Auf dem Entwicklungsdisplay überprüft |
 | Bestehende Spiegelung → YouTube-Video → zurück zur Spiegelung | Ja, mit Laufzeit 0.2.4 | Einzelner bestätigter Ablauf, keine allgemeine Fehlerfreiheit |
 | Direkte YouTube-AirPlay-Wiedergabe | Ja, mit Laufzeit 0.2.4 | CarPlay war dabei im iDrive getrennt |
@@ -334,7 +343,7 @@ bestätigte Weg ist deshalb:
 
 1. CarPlay im iDrive manuell trennen.
 2. Den persönlichen Hotspot und den MGU-WiFi-Uplink bestehen lassen.
-3. BMW AirPlay by pllana.io öffnen und „Verbinden“ drücken.
+3. PllanaCast for BMW öffnen und „Verbinden“ drücken.
 4. Den eigenen AirPlay-Empfänger am iPhone auswählen.
 
 Die vorübergehende Anforderung „AirPlay hat immer Vorrang“ wurde als

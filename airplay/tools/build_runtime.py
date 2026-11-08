@@ -135,7 +135,7 @@ def main():
     gst_flags = subprocess.check_output(['pkg-config', '--cflags', '--libs', 'gstreamer-1.0', 'gio-2.0'], text=True).split()
     run(['gcc', '-O2', '-march=x86-64', '-mtune=generic', '-Wall', '-Wextra', '-Werror', '-I', ROOT / 'airplay/native',
          ROOT / 'airplay/native/mgu_media_player.c', '-o', RUNTIME / 'bin/mgu-media-player'] + gst_flags + ['-lm'])
-    # pllana Cast (Android screen) sink: framed H.264/PCM from stdin.
+    # PllanaCast for BMW (Android screen) sink: framed H.264/PCM from stdin.
     app_flags = subprocess.check_output(['pkg-config', '--cflags', '--libs', 'gstreamer-1.0', 'gstreamer-app-1.0'], text=True).split()
     run(['gcc', '-O2', '-march=x86-64', '-mtune=generic', '-Wall', '-Wextra', '-Werror',
          ROOT / 'airplay/native/mgu_cast_receiver.c', '-o', RUNTIME / 'bin/mgu-cast-receiver'] + app_flags)
@@ -205,7 +205,7 @@ def main():
         executable.chmod(0o755)
     (RUNTIME / 'lib/ld-linux-x86-64.so.2').chmod(0o755)
     record = {
-        'format': 'mgu-airplay-runtime-v1', 'version': '0.6.1', 'architecture': 'x86_64',
+        'format': 'mgu-airplay-runtime-v1', 'version': '0.6.2', 'architecture': 'x86_64',
         'uxplay': {'version': '1.73.7', 'revision': UX_REV},
         'mdns_client': {'version': '765.20.4', 'revision': MDNS_REV, 'daemon': 'existing MGU mdnsd'},
         'source_patch': {'file': 'lib/CMakeLists.txt', 'sha256': sha(cmake)},
