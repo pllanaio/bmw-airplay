@@ -8,7 +8,7 @@ einem separat installierten UxPlay-Empfänger und BMW-Audiorouting.
 Die bisherige Erprobung ist keine Freigabe für alle MGU-Hardwarestände,
 Fahrzeugausstattungen, iPhone-Apps oder iOS-Versionen.
 
-Der vorbereitete Quellstand für App und Laufzeit ist **0.5.0**. Die neuen
+Der vorbereitete Quellstand für App und Laufzeit ist **0.5.1**. Die neuen
 Änderungen sind lokal geprüft und noch nicht am Fahrzeug abgenommen. Die
 Fahrzeugbestätigungen weiter unten beziehen sich auf die dort genannten
 älteren Versionen.
@@ -16,6 +16,19 @@ Fahrzeugbestätigungen weiter unten beziehen sich auf die dort genannten
 Der historische Git-Tag v0.2.6 bezeichnet den ersten veröffentlichten
 Quellcode-Snapshot. Die nachträgliche Store-Anbindung und diese ausführliche
 Dokumentation stehen auf main. Der Tag wird dafür nicht nachträglich verschoben.
+
+## Änderungen in 0.5.1 – Uplink-Umstellung aus 0.4.8 zurückgenommen
+
+Nach 0.4.8 lief das Streaming am Fahrzeug weniger zuverlässig als mit 0.4.7.
+0.5.1 nimmt die 0.4.8-Änderungen zurück; Erkennung und Verbindung
+verhalten sich wieder wie in 0.4.7:
+
+- kein eigener mDNS-Responder der App mehr auf UDP 5353 (er teilte den Port
+  mit dem BMW-mdnsd);
+- kein Bonjour-Export aus UxPlay (`MGU_DNSSD`) mehr;
+- Uplink-Firewallregeln wieder nur für die gefundenen BMW-mdnsd-Sockets.
+
+Android/DLNA und die Miracast-Vorprüfung aus 0.5.0 bleiben erhalten.
 
 ## Änderungen in 0.5.0 – Android-Streaming (DLNA) und Miracast-Vorprüfung
 

@@ -35,7 +35,7 @@ const fakeFs = {existsSync:()=>true,lstatSync:()=>({isSocket:()=>true,uid:12233}
     statSync:p=>({dev:1,ino:/control\.sock$/.test(p)?socketInode:7,mtime:new Date(0)})};
 const modules = {
     './resolver':{refresh:()=>startupOrder.push('dns'),hasUplink:()=>uplinkOnline},fs:fakeFs,path:require('path'),'./receiver':{Receiver,validVideoViewport:require('../apps/pllana_airplay/receiver').validVideoViewport},
-    './audio_route':{AudioRoute,AUDIO_SINK:'fakesink'},'./mdns_responder':{UplinkResponder:class extends EventEmitter{setServices(s){this.services=s;}setLease(l){this.lease=l;}stop(){this.stopped=true;}}},'./kit/signals':{},
+    './audio_route':{AudioRoute,AUDIO_SINK:'fakesink'},'./kit/signals':{},
     './music_controls':{MusicControls},
     './media_player':{MediaPlayer:class extends EventEmitter{constructor(o){super();player=this;this.options=o;this.state={state:'stopped'};this.closed=0;}setViewport(w,h){this.viewport={width:w,height:h};return true;}close(){this.closed++;return Promise.resolve();}stop(){}}},
     './dlna_renderer':{DlnaRenderer:class extends EventEmitter{constructor(o){super();dlna=this;this.options=o;this.running=false;this.cast=null;this.starts=0;this.stops=0;this.actions=[];}
