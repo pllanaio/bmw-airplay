@@ -92,6 +92,7 @@ jobs:
           node airplay/test_bmw_media.js && node airplay/test_carplay_focus.js
           node airplay/test_dlna.js && node airplay/test_p2p_probe.js
           MGU_PLAYER_TEST_RUNTIME=$PWD/.build/airplay/runtime node airplay/test_media_player.js
+          MGU_PLAYER_TEST_RUNTIME=$PWD/.build/airplay/runtime node airplay/test_cast_receiver.js
           python3 test/test_store_contract.py
       - name: Package runtime tool and app
         run: |
@@ -113,6 +114,7 @@ jobs:
           tar -tzf dist/pllana-airplay-receiver@*.tgz | grep -qx 'files/runtime/bin/mgu-airplay-mdns-route'
           tar -tzf dist/pllana-airplay-receiver@*.tgz | grep -qx 'files/runtime/bin/mgu-media-player'
           tar -tzf dist/pllana-airplay-receiver@*.tgz | grep -qx 'files/runtime/bin/iw'
+          tar -tzf dist/pllana-airplay-receiver@*.tgz | grep -qx 'files/runtime/bin/mgu-cast-receiver'
           tar -tzf dist/pllana-airplay-receiver@*.tgz | grep -qx 'files/p2p_probe.js'
           ! tar -tzf dist/pllana_airplay@*.tgz | grep -q '^node_modules/oap-sdk/'
           tar -xzOf dist/pllana_airplay@*.tgz package.json | python3 -c "import json,sys;p=json.load(sys.stdin);assert p['mguInternet'] is True and p['mguHmi']==['ID7'],p"
@@ -139,8 +141,51 @@ jobs:
             dist/SHA256SUMS
           if-no-files-found: error
 
+  android:
+    # pllana Cast: Android sender app for phones whose system "Cast" is
+    # Google Cast (e.g. Pixel). The runner image ships the Android SDK.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Build the APK
+        env:
+          KEYSTORE_BASE64: ${{ secrets.PLLANA_CAST_KEYSTORE_BASE64 }}
+          PLLANA_CAST_KEYSTORE_PASSWORD: ${{ secrets.PLLANA_CAST_KEYSTORE_PASSWORD }}
+          PLLANA_CAST_KEY_ALIAS: ${{ secrets.PLLANA_CAST_KEY_ALIAS }}
+          PLLANA_CAST_KEY_PASSWORD: ${{ secrets.PLLANA_CAST_KEY_PASSWORD }}
+        run: |
+          set -eu
+          version=$(python3 -c "import json;print(json.load(open('apps/pllana_airplay/app.json'))['version'])")
+          if [ -n "${KEYSTORE_BASE64:-}" ]; then
+            echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/pllana-cast.jks"
+            export PLLANA_CAST_KEYSTORE="$RUNNER_TEMP/pllana-cast.jks"
+            echo "Signing with the release key"
+          else
+            echo "::warning::No PLLANA_CAST_KEYSTORE_BASE64 secret: the APK is signed with a per-build debug key"
+          fi
+          (cd android && ./gradlew --no-daemon --stacktrace assembleRelease)
+          mkdir -p dist
+          cp android/app/build/outputs/apk/release/app-release.apk "dist/pllana-cast-$version.apk"
+          tools=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
+          "$tools/apksigner" verify --verbose --print-certs "dist/pllana-cast-$version.apk" | grep -E "Verified using|Signer #1 certificate DN|Number of signers"
+          "$tools/aapt2" dump badging "dist/pllana-cast-$version.apk" | grep -E "^package:|sdkVersion|targetSdkVersion|uses-permission"
+          unzip -l "dist/pllana-cast-$version.apk" | grep -q classes.dex
+          ls -la dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pllana-cast-apk
+          path: dist/*.apk
+          if-no-files-found: error
+
   publish:
-    needs: build
+    needs: [build, android]
     if: github.ref == 'refs/heads/main' && github.repository == 'pllanaio/bmw-airplay'
     runs-on: ubuntu-24.04
     permissions:
@@ -154,6 +199,10 @@ jobs:
         with:
           name: store-packages
           path: dist
+      - uses: actions/download-artifact@v4
+        with:
+          name: pllana-cast-apk
+          path: dist
       - name: Publish version release (immutable), then switch the catalog
         run: |
           set -eu
@@ -162,8 +211,8 @@ jobs:
           else
             gh release create "v$VERSION" --repo "$REPO" --target "$GITHUB_SHA" \
               --title "BMW AirPlay by pllana.io $VERSION" \
-              --notes "Store packages: app pllana_airplay $VERSION and receiver pllana-airplay-receiver $VERSION. Add pllanaio/bmw-airplay in MGU Store and choose Releases." \
-              dist/pllana_airplay@$VERSION.tgz dist/pllana-airplay-receiver@$VERSION.tgz dist/SHA256SUMS
+              --notes "Store packages: app pllana_airplay $VERSION and receiver pllana-airplay-receiver $VERSION. Add pllanaio/bmw-airplay in MGU Store and choose Releases. Android: install pllana-cast-$VERSION.apk on the phone (see docs/ANDROID.md)." \
+              dist/pllana_airplay@$VERSION.tgz dist/pllana-airplay-receiver@$VERSION.tgz dist/SHA256SUMS dist/pllana-cast-$VERSION.apk
             if ! gh release view catalog --repo "$REPO" > /dev/null 2>&1; then
               gh release create catalog --repo "$REPO" --target "$GITHUB_SHA" --title "BMW AirPlay Store catalog" \
                 --notes "Store catalog for pllanaio/bmw-airplay. Choose Releases in MGU Store."

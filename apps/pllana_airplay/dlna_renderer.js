@@ -19,6 +19,7 @@ const { validUri } = require('./media_player');
 
 const SSDP_ADDRESS = '239.255.255.250', SSDP_PORT = 1900, HTTP_PORT = 7103;
 const DEVICE = 'urn:schemas-upnp-org:device:MediaRenderer:1';
+const CAST_DEVICE = 'urn:pllana-io:device:CastReceiver:1';
 const AVT = 'urn:schemas-upnp-org:service:AVTransport:1';
 const RCS = 'urn:schemas-upnp-org:service:RenderingControl:1';
 const CMS = 'urn:schemas-upnp-org:service:ConnectionManager:1';
@@ -287,8 +288,11 @@ class DlnaRenderer extends EventEmitter {
     // --- SSDP -----------------------------------------------------------
     targets() {
         return [['upnp:rootdevice', 'uuid:' + this.uuid + '::upnp:rootdevice'], ['uuid:' + this.uuid, 'uuid:' + this.uuid],
-            [DEVICE, 'uuid:' + this.uuid + '::' + DEVICE]].concat(Object.keys(SERVICES).map(k => [SERVICES[k], 'uuid:' + this.uuid + '::' + SERVICES[k]]));
+            [DEVICE, 'uuid:' + this.uuid + '::' + DEVICE]].concat(Object.keys(SERVICES).map(k => [SERVICES[k], 'uuid:' + this.uuid + '::' + SERVICES[k]]))
+            .concat(this.options.castPort ? [[CAST_DEVICE, 'uuid:' + this.uuid + '::' + CAST_DEVICE]] : []);
     }
+    // The pllana Cast app finds the screen receiver through the same SSDP.
+    castHeaders() { return this.options.castPort ? ['X-PLLANA-CAST: ' + this.options.castPort, 'X-PLLANA-NAME: ' + this.name] : []; }
     location(address) { return 'http://' + address + ':' + this.port + '/dlna/description.xml'; }
     server_header() { return 'Linux/4.14 UPnP/1.0 pllana-airplay/' + this.version; }
     announce(nts) {
@@ -297,7 +301,7 @@ class DlnaRenderer extends EventEmitter {
             try { this.ssdp.setMulticastInterface(local.address); } catch (e) { continue; }
             for (const target of this.targets()) {
                 const lines = ['NOTIFY * HTTP/1.1', 'HOST: ' + SSDP_ADDRESS + ':' + SSDP_PORT, 'NT: ' + target[0], 'NTS: ' + nts, 'USN: ' + target[1]];
-                if (nts === 'ssdp:alive') lines.push('CACHE-CONTROL: max-age=1800', 'LOCATION: ' + this.location(local.address), 'SERVER: ' + this.server_header());
+                if (nts === 'ssdp:alive') lines.push('CACHE-CONTROL: max-age=1800', 'LOCATION: ' + this.location(local.address), 'SERVER: ' + this.server_header(), ...this.castHeaders());
                 const message = Buffer.from(lines.join('\r\n') + '\r\n\r\n');
                 this.ssdp.send(message, 0, message.length, SSDP_PORT, SSDP_ADDRESS, () => {});
             }
@@ -322,7 +326,7 @@ class DlnaRenderer extends EventEmitter {
             for (const target of matches) {
                 const message = Buffer.from(['HTTP/1.1 200 OK', 'CACHE-CONTROL: max-age=1800', 'DATE: ' + new Date().toUTCString(), 'EXT:',
                     'LOCATION: ' + this.location(local.address), 'SERVER: ' + this.server_header(), 'ST: ' + target[0], 'USN: ' + target[1],
-                    'BOOTID.UPNP.ORG: 1', 'CONFIGID.UPNP.ORG: 1'].join('\r\n') + '\r\n\r\n');
+                    'BOOTID.UPNP.ORG: 1', 'CONFIGID.UPNP.ORG: 1'].concat(this.castHeaders()).join('\r\n') + '\r\n\r\n');
                 this.ssdp.send(message, 0, message.length, rinfo.port, rinfo.address, () => {});
             }
         }, delay);
@@ -624,4 +628,4 @@ class DlnaRenderer extends EventEmitter {
         setTimeout(() => { if (this.subscriptions.get(sid) === entry) this.notify(entry); }, 100);
     }
 }
-module.exports = { DlnaRenderer, clock, parseClock, privatePeer, scpd, didl, HTTP_PORT, SSDP_PORT, PROTOCOLS };
+module.exports = { CAST_DEVICE, DlnaRenderer, clock, parseClock, privatePeer, scpd, didl, HTTP_PORT, SSDP_PORT, PROTOCOLS };

@@ -8,7 +8,7 @@ einem separat installierten UxPlay-Empfänger und BMW-Audiorouting.
 Die bisherige Erprobung ist keine Freigabe für alle MGU-Hardwarestände,
 Fahrzeugausstattungen, iPhone-Apps oder iOS-Versionen.
 
-Der vorbereitete Quellstand für App und Laufzeit ist **0.5.1**. Die neuen
+Der vorbereitete Quellstand für App und Laufzeit ist **0.6.0**. Die neuen
 Änderungen sind lokal geprüft und noch nicht am Fahrzeug abgenommen. Die
 Fahrzeugbestätigungen weiter unten beziehen sich auf die dort genannten
 älteren Versionen.
@@ -16,6 +16,17 @@ Fahrzeugbestätigungen weiter unten beziehen sich auf die dort genannten
 Der historische Git-Tag v0.2.6 bezeichnet den ersten veröffentlichten
 Quellcode-Snapshot. Die nachträgliche Store-Anbindung und diese ausführliche
 Dokumentation stehen auf main. Der Tag wird dafür nicht nachträglich verschoben.
+
+## Änderungen in 0.6.0 – pllana Cast für Android (z. B. Pixel)
+
+- Neue Android-App **pllana Cast** (`android/`, APK im Release): überträgt
+  Bildschirm und Ton per WLAN oder Handy-Hotspot, für Handys ohne Miracast/
+  DLNA-Spiegelung (Pixel: „Übertragen“ ist nur Google Cast).
+- HeadUnit: Empfänger auf TCP 7104, Anmeldung mit dem Code vom Display,
+  natives Dekodieren (`mgu-cast-receiver`) in den Spiegelungs-Videopfad,
+  Ton über den BMW-Audioweg. Erkennung per SSDP.
+- Details: [ANDROID.md](ANDROID.md). Nicht am Fahrzeug geprüft; in CI geprüft
+  mit einem simulierten Handy (echtes H.264 + PCM bis in die Frames).
 
 ## Änderungen in 0.5.1 – Uplink-Umstellung aus 0.4.8 zurückgenommen
 

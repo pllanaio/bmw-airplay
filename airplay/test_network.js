@@ -9,11 +9,11 @@ function installed(interfaces, discovery) {
         '    ' + rule.replace('counter accept', 'counter packets 19 bytes 4028 accept') + ' # handle ' + (i + 1)).join('\n') }));
 }
 const initial = plan('apply', uid, empty(), {});
-assert(initial.some(line => /iifname "wlan_bridge" ip saddr .* tcp dport 7100-7103/.test(line)), 'BMW AP supports a local phone without an uplink lease');
+assert(initial.some(line => /iifname "wlan_bridge" ip saddr .* tcp dport 7100-7104/.test(line)), 'BMW AP supports a local phone without an uplink lease');
 assert(initial.some(line => /iifname "wlan0"/.test(line)), 'legacy hotspot station retained');
 assert(initial.some(line => /iifname "wlan1"/.test(line)), 'second uplink station supported');
 assert.deepStrictEqual(WLAN, ['wlan_bridge', 'wlan0', 'wlan1']);
-assert(initial.every(line => /(?:tcp|udp) (?:sport|dport) 7100-7103/.test(line) ||
+assert(initial.every(line => /(?:tcp|udp) (?:sport|dport) 7100-7104/.test(line) ||
     /oifname .* meta skuid 13007 tcp dport 1024-65535/.test(line) ||
     /^insert rule (?:ip filter|inet mgu_uplink) \S+ iifname "(?:wlan_bridge|wlan0|wlan1)" ip saddr (?:10\.0\.0\.0\/8|172\.16\.0\.0\/12|192\.168\.0\.0\/16|169\.254\.0\.0\/16) udp dport 1900 counter/.test(line) ||
     /^insert rule (?:ip filter|inet mgu_uplink) \S+ oifname "(?:wlan_bridge|wlan0|wlan1)" ip daddr (?:10\.0\.0\.0\/8|172\.16\.0\.0\/12|192\.168\.0\.0\/16|169\.254\.0\.0\/16) meta skuid 13007 udp sport 1900 counter/.test(line) ||

@@ -132,7 +132,7 @@ function drawHome(c, state, notice, logo, artwork, onControl) {
             text(c, code[i], left + i * (cell + gap) + cell / 2, 283, 50, '#ffffff', { align: 'center', literal: true });
         }
         text(c, 'BMW-WLAN oder gemeinsames WLAN.', 1084, 356, 23, COLORS.muted);
-        text(c, state.directVideo === false ? 'Ohne Uplink: Video bleibt gespiegelt.' : 'Android: „Streamen auf“ wählen.', 1084, 395, 23, COLORS.muted);
+        text(c, state.directVideo === false ? 'Ohne Uplink: Video bleibt gespiegelt.' : 'Android: App „pllana Cast“ + Code', 1084, 395, 23, COLORS.muted);
     } else {
         airplay(c, 1258, 201, 90, COLORS.blue);
         text(c, busy ? 'Verbindung wird vorbereitet.' : 'Unten „Verbinden“ drücken.', 1303, 337, 25, COLORS.ink, { align: 'center' });
