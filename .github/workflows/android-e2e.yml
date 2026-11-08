@@ -1,0 +1,52 @@
+name: pllana Cast end to end (Android emulator)
+
+# Installs the real app in an Android 15 emulator, casts the emulator screen
+# to the real CastReceiver on the runner and checks that decodable H.264
+# arrives. Does not gate Store releases (emulators can be flaky).
+on:
+  push:
+    branches: [main, 'claude/**']
+    paths: ['android/**', 'apps/pllana_airplay/cast_receiver.js', 'airplay/tools/cast_e2e_receiver.js', '.github/workflows/android-e2e.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  emulator:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        api: [35, 33]
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Tools and KVM
+        run: |
+          sudo apt-get update && sudo apt-get install -y ffmpeg
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules && sudo udevadm trigger --name-match=kvm
+      - name: Build debug APK
+        run: cd android && ./gradlew --no-daemon assembleDebug
+      - name: Cast from the emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: ${{ matrix.api }}
+          target: google_apis
+          arch: x86_64
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          script: bash android/e2e/run_e2e.sh
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: cast-e2e-api${{ matrix.api }}
+          path: cast-e2e/
+          if-no-files-found: ignore

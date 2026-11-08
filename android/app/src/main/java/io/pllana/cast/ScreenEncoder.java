@@ -16,7 +16,7 @@ import java.nio.ByteBuffer;
 
 /**
  * Screen -> VirtualDisplay -> H.264 (MediaCodec, surface input) -> connection.
- * The picture is scaled into 1280x720 (or 720x1280 in portrait); rotation or
+ * The picture is scaled into 1280x720 (portrait too); rotation or
  * a resized single-app capture reconfigures the encoder without asking the
  * user again (the VirtualDisplay is resized, never recreated).
  */
@@ -33,6 +33,9 @@ final class ScreenEncoder {
     private Thread drain;
     private volatile boolean running;
     private int width, height;
+    /** Diagnosis counters. */
+    volatile long encoded, keyFrames, configs;
+    volatile String codecName = "";
 
     ScreenEncoder(MediaProjection projection, CastConnection connection, int densityDpi) {
         this.projection = projection;
@@ -40,10 +43,13 @@ final class ScreenEncoder {
         this.densityDpi = densityDpi;
     }
 
-    /** Encoder size for a source size: fits the bounds, multiples of 16. */
+    /**
+     * Encoder size for a source size: fits into 1280x720 in both orientations
+     * (portrait becomes e.g. 320x720), like iPhone mirroring, whose frame
+     * sizes the BMW renderer is proven with. Multiples of 16.
+     */
     static int[] target(int sourceWidth, int sourceHeight) {
-        boolean landscape = sourceWidth >= sourceHeight;
-        int maxW = landscape ? LONG_EDGE : SHORT_EDGE, maxH = landscape ? SHORT_EDGE : LONG_EDGE;
+        int maxW = LONG_EDGE, maxH = SHORT_EDGE;
         double scale = Math.min(1.0, Math.min((double) maxW / sourceWidth, (double) maxH / sourceHeight));
         int w = Math.max(160, (int) Math.floor(sourceWidth * scale / 16) * 16);
         int h = Math.max(160, (int) Math.floor(sourceHeight * scale / 16) * 16);
@@ -62,7 +68,7 @@ final class ScreenEncoder {
     synchronized void resize(int sourceWidth, int sourceHeight) {
         int[] size = target(sourceWidth, sourceHeight);
         if (!running || (size[0] == width && size[1] == height)) return;
-        Log.i(TAG, "resize " + width + "x" + height + " -> " + size[0] + "x" + size[1]);
+        CastLog.add("Größe " + width + "×" + height + " → " + size[0] + "×" + size[1]);
         stopDrain();
         display.setSurface(null);
         releaseCodec();
@@ -72,8 +78,8 @@ final class ScreenEncoder {
             display.resize(width, height, densityDpi);
             display.setSurface(surface);
             startDrain();
-        } catch (IOException e) {
-            Log.e(TAG, "encoder restart failed", e);
+        } catch (IOException | RuntimeException e) {
+            CastLog.error("Encoder-Neustart", e);
             connection.close("encoder");
         }
     }
@@ -99,6 +105,7 @@ final class ScreenEncoder {
             codec.configure(format, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE);
         } catch (RuntimeException e) {
             // Some encoders reject optional keys; retry with the essentials.
+            CastLog.error("Encoder-Optionen abgelehnt, Basisformat", e);
             codec.release();
             MediaFormat basic = MediaFormat.createVideoFormat(MediaFormat.MIMETYPE_VIDEO_AVC, width, height);
             basic.setInteger(MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface);
@@ -111,6 +118,8 @@ final class ScreenEncoder {
         }
         surface = codec.createInputSurface();
         codec.start();
+        try { codecName = codec.getName(); } catch (RuntimeException ignored) { }
+        CastLog.add("Encoder " + codecName + " " + width + "×" + height);
     }
 
     private void startDrain() {
@@ -127,7 +136,7 @@ final class ScreenEncoder {
         while (running) {
             int index;
             try { index = current.dequeueOutputBuffer(info, 20_000); }
-            catch (IllegalStateException e) { return; }
+            catch (IllegalStateException e) { if (running) CastLog.error("Encoder", e); return; }
             if (index < 0) continue;
             ByteBuffer buffer = current.getOutputBuffer(index);
             if (buffer != null && info.size > 0) {
@@ -136,6 +145,8 @@ final class ScreenEncoder {
                 buffer.get(scratch, 0, info.size);
                 boolean config = (info.flags & MediaCodec.BUFFER_FLAG_CODEC_CONFIG) != 0;
                 boolean key = (info.flags & MediaCodec.BUFFER_FLAG_KEY_FRAME) != 0;
+                if (config) { if (configs++ == 0) CastLog.add("Erste Codec-Konfiguration (" + info.size + " Bytes)"); }
+                else { if (encoded++ == 0) CastLog.add("Erstes Bild kodiert" + (key ? " (Keyframe)" : " (kein Keyframe!)")); if (key) keyFrames++; }
                 connection.send(config ? CastConnection.TYPE_CONFIG : CastConnection.TYPE_VIDEO, key, info.presentationTimeUs, scratch, 0, info.size);
             }
             current.releaseOutputBuffer(index, false);

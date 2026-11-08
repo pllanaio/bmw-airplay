@@ -25,7 +25,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 /** Find the BMW, enter the code from the iDrive display, start/stop casting. */
-public final class MainActivity extends Activity implements CastService.StatusListener {
+public final class MainActivity extends Activity implements CastService.StatusListener, CastLog.Listener {
     private static final int REQUEST_CAPTURE = 1, REQUEST_PERMISSIONS = 2;
 
     private SharedPreferences prefs;
@@ -35,6 +35,7 @@ public final class MainActivity extends Activity implements CastService.StatusLi
     private CheckBox sound;
     private Button start, search;
     private String selectedHost;
+    private TextView log;
     private int selectedPort = 7104;
 
     @Override
@@ -92,6 +93,20 @@ public final class MainActivity extends Activity implements CastService.StatusLi
         status = text("", 15);
         status.setPadding(0, dp(12), 0, 0);
         root.addView(status);
+        root.addView(heading("Diagnose"));
+        Button copy = new Button(this);
+        copy.setText("Diagnose kopieren");
+        copy.setAllCaps(false);
+        copy.setOnClickListener(v -> {
+            android.content.ClipboardManager clipboard = getSystemService(android.content.ClipboardManager.class);
+            clipboard.setPrimaryClip(android.content.ClipData.newPlainText("pllana Cast Diagnose", CastLog.text() + "\n" + status.getText()));
+            status.setText(status.getText() + "\n(Diagnose kopiert)");
+        });
+        root.addView(copy);
+        log = text("", 11);
+        log.setTypeface(Typeface.MONOSPACE);
+        log.setTextIsSelectable(true);
+        root.addView(log);
         root.addView(text("\nHinweis: Inhalte mit Kopierschutz (z. B. manche Streamingdienste) zeigt Android bei der Bildschirmaufnahme schwarz oder stumm.", 13));
 
         ScrollView scroll = new ScrollView(this);
@@ -107,11 +122,20 @@ public final class MainActivity extends Activity implements CastService.StatusLi
             return insets.consumeSystemWindowInsets();
         });
         setContentView(scroll);
+        // Test hook (also handy via adb): prefilled address/code, optional autostart.
+        Intent launch = getIntent();
+        if (launch != null && launch.hasExtra("host")) {
+            host.setText(launch.getStringExtra("host"));
+            if (launch.hasExtra("code")) code.setText(launch.getStringExtra("code"));
+            if (launch.hasExtra("sound")) sound.setChecked(launch.getBooleanExtra("sound", true));
+            if (launch.getBooleanExtra("autostart", false)) { search.post(this::toggle); return; }
+        }
         discover();
     }
 
-    @Override protected void onResume() { super.onResume(); CastService.addListener(this); }
-    @Override protected void onPause() { CastService.removeListener(this); super.onPause(); }
+    @Override protected void onResume() { super.onResume(); CastService.addListener(this); CastLog.addListener(this); }
+    @Override protected void onPause() { CastService.removeListener(this); CastLog.removeListener(this); super.onPause(); }
+    @Override public void onLog(String text) { log.setText(text); }
 
     @Override
     public void onStatus(String text, boolean active) {
@@ -191,7 +215,7 @@ public final class MainActivity extends Activity implements CastService.StatusLi
     protected void onActivityResult(int request, int result, Intent data) {
         super.onActivityResult(request, result, data);
         if (request != REQUEST_CAPTURE) return;
-        if (result != RESULT_OK || data == null) { status.setText("Bildschirmaufnahme wurde nicht erlaubt."); return; }
+        if (result != RESULT_OK || data == null) { CastLog.add("Bildschirmaufnahme abgelehnt"); status.setText("Bildschirmaufnahme wurde nicht erlaubt."); return; }
         Intent service = new Intent(this, CastService.class)
                 .putExtra(CastService.EXTRA_RESULT_CODE, result)
                 .putExtra(CastService.EXTRA_RESULT_DATA, data)

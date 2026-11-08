@@ -53,6 +53,9 @@ final class CastConnection {
     private final AtomicLong backlog = new AtomicLong();
     private volatile boolean open;
     private volatile boolean dropping;
+    /** Diagnosis counters. */
+    final AtomicLong bytesSent = new AtomicLong(), framesSent = new AtomicLong(), framesDropped = new AtomicLong();
+    volatile long carShown = -1; volatile int carWidth, carHeight;
     private Listener listener;
     private String receiverName = "";
 
@@ -119,8 +122,9 @@ final class CastConnection {
         if (!open) return;
         boolean droppable = type == TYPE_VIDEO && !key;
         if (type == TYPE_VIDEO) {
-            if (dropping && !key) return;
+            if (dropping && !key) { framesDropped.incrementAndGet(); return; }
             if (droppable && backlog.get() > MAX_BACKLOG) {
+                framesDropped.incrementAndGet();
                 // Skip until the next key frame, which the encoder sends now.
                 dropping = true;
                 if (listener != null) listener.onKeyFrameNeeded();
@@ -136,6 +140,7 @@ final class CastConnection {
         for (int i = 0; i < 8; i++) frame[8 + i] = (byte) (ptsUs >>> (56 - 8 * i));
         System.arraycopy(payload, offset, frame, 16, length);
         backlog.addAndGet(frame.length);
+        if (type == TYPE_VIDEO) framesSent.incrementAndGet();
         queue.offer(new Frame(frame, droppable));
     }
 
@@ -146,9 +151,11 @@ final class CastConnection {
                 if (frame == null) continue;
                 out.write(frame.data);
                 backlog.addAndGet(-frame.data.length);
+                bytesSent.addAndGet(frame.data.length);
                 if (queue.isEmpty()) out.flush();
             }
         } catch (Exception e) {
+            if (open) CastLog.error("Senden abgebrochen", e);
             close("network");
         }
     }
@@ -158,6 +165,11 @@ final class CastConnection {
             InputStream in = socket.getInputStream();
             while (open) {
                 JSONObject message = readLine(in);
+                if ("status".equals(message.optString("type"))) {
+                    carShown = message.optLong("shown", -1);
+                    carWidth = message.optInt("width"); carHeight = message.optInt("height");
+                    continue;
+                }
                 if ("stop".equals(message.optString("type"))) {
                     if (listener != null) listener.onStopRequested();
                     close("stopped_by_car");
@@ -165,6 +177,7 @@ final class CastConnection {
                 }
             }
         } catch (IOException e) {
+            if (open) CastLog.error("Verbindung vom Auto getrennt", e);
             close("disconnected");
         }
     }
