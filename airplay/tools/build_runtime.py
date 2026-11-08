@@ -6,6 +6,7 @@ import os
 import re
 import shutil
 import subprocess
+from patch_dnssd_export import patch as patch_dnssd_export
 from patch_hls_lifecycle import patch as patch_hls_lifecycle
 from patch_detach import patch as patch_detach
 from patch_reverse import patch as patch_reverse
@@ -97,6 +98,9 @@ def main():
     shutil.copy2(ROOT / 'airplay/native/mgu_crash_trace.h', source / 'mgu_crash_trace.h')
     shutil.copy2(ROOT / 'airplay/native/mgu_audio_metadata.h', source / 'mgu_audio_metadata.h')
     shutil.copy2(ROOT / 'airplay/native/mgu_music_control.h', source / 'mgu_music_control.h')
+    # Uplink Bonjour: the backend re-announces UxPlay's exact records there.
+    dnssd_source = source / 'lib/dnssd.c'
+    dnssd_source.write_text(patch_dnssd_export((WORK / 'UxPlay/lib/dnssd.c').read_text()))
     ux_source.write_text(ux_text)
     video_source.write_text(video_text)
     shutil.copy2(ROOT / 'airplay/native/mgu_hls_output.h', source / 'renderers/mgu_hls_output.h')
@@ -193,7 +197,7 @@ def main():
         executable.chmod(0o755)
     (RUNTIME / 'lib/ld-linux-x86-64.so.2').chmod(0o755)
     record = {
-        'format': 'mgu-airplay-runtime-v1', 'version': '0.4.7', 'architecture': 'x86_64',
+        'format': 'mgu-airplay-runtime-v1', 'version': '0.4.8', 'architecture': 'x86_64',
         'uxplay': {'version': '1.73.7', 'revision': UX_REV},
         'mdns_client': {'version': '765.20.4', 'revision': MDNS_REV, 'daemon': 'existing MGU mdnsd'},
         'source_patch': {'file': 'lib/CMakeLists.txt', 'sha256': sha(cmake)},
@@ -209,6 +213,7 @@ def main():
         'music_control_sha256': sha(ROOT / 'airplay/native/mgu_music_control.h'),
         'dacp_resolver_sha256': sha(ROOT / 'airplay/native/mgu_dacp_resolve.c'),
         'mdns_route_sha256': sha(ROOT / 'airplay/native/mdns_route.c'),
+        'dnssd_export_sha256': sha(source / 'lib/dnssd.c'),
         'network_policy_sha256': sha(ROOT / 'airplay/network.js'),
         'hls_output_sha256': sha(ROOT / 'airplay/native/mgu_hls_output.h'),
         'crash_trace_sha256': sha(ROOT / 'airplay/native/mgu_crash_trace.h'),

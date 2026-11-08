@@ -1,0 +1,37 @@
+'use strict';
+const assert = require('assert');
+const { UplinkResponder, encodeName, readName, privateLease, parseQuery, T } = require('../apps/pllana_airplay/mdns_responder');
+const txt = kv => Buffer.concat(kv.map(s => { const b = Buffer.from(s); return Buffer.concat([Buffer.from([b.length]), b]); }));
+const query = (labels, type, qu) => Buffer.concat([Buffer.from([0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0]), encodeName(labels), Buffer.from([0, type, qu ? 0x80 : 0, 1])]);
+// Lease validation: only private Wi-Fi station leases of mgu-uplink.
+assert.deepStrictEqual(privateLease({ interface: 'wlan1', ip: '172.20.10.3', prefix: 28 }), { interface: 'wlan1', ip: '172.20.10.3', prefix: 28 });
+assert.strictEqual(privateLease({ interface: 'vethuplink', ip: '192.168.8.100', prefix: 24 }), null, 'USB/LTE uplinks keep the BMW AP path');
+assert.strictEqual(privateLease({ interface: 'wlan1', ip: '8.8.8.8', prefix: 24 }), null, 'never a public network');
+// Name compression is followed when reading.
+const compressed = Buffer.concat([encodeName(['a', 'local']), Buffer.from([1, 0x62, 0xc0, 0])]);
+assert.deepStrictEqual(readName(compressed, 9).labels, ['b', 'a', 'local']);
+assert.strictEqual(parseQuery(Buffer.from([0, 0, 0x84, 0, 0, 0, 0, 0, 0, 0, 0, 0])), null, 'responses are not queries');
+const r = new UplinkResponder();
+const sent = [];
+r.socket = { send: (b, o, l, port, address) => sent.push({ b, port, address }) };
+r.lease = { interface: 'wlan1', ip: '172.20.10.3', prefix: 28 };
+r.services = { airplay: { name: 'BMW AirPlay by pllana.io', port: 7100, txt: txt(['deviceid=02:11:22:33:44:55', 'pk=abc']) } };
+const from = (address, port) => ({ address, port });
+r.onMessage(query(['_airplay', '_tcp', 'local'], T.PTR), from('172.20.10.1', 5353));
+assert.strictEqual(sent.length, 1); assert.strictEqual(sent[0].address, '224.0.0.251', 'normal queries get multicast answers');
+const packet = sent[0].b;
+assert.strictEqual(packet.readUInt16BE(2), 0x8400); assert.strictEqual(packet.readUInt16BE(6), 1, 'one PTR answer');
+assert(packet.readUInt16BE(10) >= 3, 'SRV, TXT and A as additional records');
+assert(packet.includes(Buffer.from('deviceid=02:11:22:33:44:55')), 'TXT exactly as UxPlay registered it');
+assert(packet.includes(Buffer.from([172, 20, 10, 3])), 'A record carries the uplink address');
+r.onMessage(query(['_airplay', '_tcp', 'local'], T.PTR, true), from('172.20.10.1', 5353));
+assert.strictEqual(sent[1].address, '172.20.10.1', 'QU queries get a unicast answer');
+r.onMessage(query(['_airplay', '_tcp', 'local'], T.PTR), from('172.20.10.1', 50000));
+assert.strictEqual(sent[2].port, 50000); assert.strictEqual(sent[2].b.readUInt16BE(4), 1, 'legacy queries echo the question');
+r.onMessage(query(['_airplay', '_tcp', 'local'], T.PTR), from('192.168.2.5', 5353));
+r.onMessage(query(['_airplay', '_tcp', 'local'], T.PTR), from('172.20.10.3', 5353));
+r.onMessage(query(['_googlecast', '_tcp', 'local'], T.PTR), from('172.20.10.1', 5353));
+assert.strictEqual(sent.length, 3, 'no answer outside the hotspot subnet, to itself or for other services');
+r.timers = []; r.setServices({});
+assert(sent.length === 4 && sent[3].b.readUInt32BE(sent[3].b.length - 4 - 2 - 4 - 4) !== undefined, 'goodbye on removal');
+console.log('Uplink Bonjour responder: lease bounds, PTR/SRV/TXT/A answers, QU/legacy replies, subnet filter and goodbye passed');

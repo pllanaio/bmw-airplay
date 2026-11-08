@@ -209,7 +209,7 @@ class Receiver extends EventEmitter {
         let child;
         try { child = this.spawn(launcher, args, { env, cwd: this.dataDir, detached: true, stdio: ['ignore', 'pipe', 'pipe'] }); }
         catch (e) { if (metadata) metadata.close(); removeVideoViewport(viewportFile); this.update({ phase: 'error', error: 'launch_failed', pin: '' }); return false; }
-        this.child = child; this.closedChild = null; this.features = {};
+        this.child = child; this.closedChild = null; this.features = {}; this.dnssd = {};
         this.viewportFile = viewportFile;
         this.musicDirectory = metadataEnv && metadataEnv.MGU_MUSIC_DIR || '';
         this.update({ phase: 'starting', profile, directVideo, videoViewport: this.videoViewport, viewportError, connected: false, supportsSessionStatus: false, origin: null, supportsVideoStop: false, supportsAutomaticMedia: false, detached: false, playlistPending: false, music: emptyMusic(), mode: profile === 'audio' ? 'audio' : 'waiting', returnMode: 'waiting', pin, file, frame: null, error: viewportError, audioError: null, audio: audio !== 'fakesink' });
@@ -226,7 +226,7 @@ class Receiver extends EventEmitter {
                 clearTimeout(this.stopTimer); clearTimeout(this.stopFailTimer);
                 this.stopTimer = this.stopFailTimer = null;
             }
-            if (this.child === child) this.child = null;
+            if (this.child === child) { this.child = null; this.dnssd = {}; this.emit('dnssd', {}); }
             removeVideoViewport(viewportFile);
             if (this.viewportFile === viewportFile) { this.viewportFile = ''; this.viewportApplied = ''; }
             if (metadata) metadata.close();
@@ -279,6 +279,14 @@ class Receiver extends EventEmitter {
                 if (line === 'MGU_FEATURES media-stop') { this.features.mediaStop = true; this.update({ supportsVideoStop: true }); }
                 if (line === 'MGU_FEATURES playlist') this.features.playlist = true;
                 if (line === 'MGU_FEATURES audio-only') this.features.audioOnly = true;
+                // Runtime 0.4.8+: UxPlay's own Bonjour records, re-announced on the Wi-Fi uplink.
+                const dnssd = /^MGU_DNSSD (raop|airplay) ([0-9]{1,5}) ((?:[0-9a-f]{2}){1,63}) ((?:[0-9a-f]{2}){0,1300})$/.exec(line);
+                if (dnssd) {
+                    this.dnssd[dnssd[1]] = { name: Buffer.from(dnssd[3], 'hex').toString('utf8'), port: Number(dnssd[2]), txt: Buffer.from(dnssd[4], 'hex') };
+                    this.emit('dnssd', Object.assign({}, this.dnssd));
+                }
+                const dnssdStop = /^MGU_DNSSD_STOP (raop|airplay)$/.exec(line);
+                if (dnssdStop) { delete this.dnssd[dnssdStop[1]]; this.emit('dnssd', Object.assign({}, this.dnssd)); }
                 if (line === 'MGU_FEATURES auto-media') { this.features.autoMedia = true; this.update({ supportsAutomaticMedia: true }); }
                 if (line === 'MGU_FEATURES session-status') { this.features.sessionStatus = true; this.update({ supportsSessionStatus: true }); }
                 if (line === 'MGU_SESSION connected' || line === 'MGU_SESSION disconnected') {
