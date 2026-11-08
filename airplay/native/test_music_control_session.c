@@ -38,6 +38,9 @@ static void admit_video(raop_t *raop, unsigned char *peer) {
     http_request_add_data(request, body, sizeof body - 1); assert(http_request_is_complete(request));
     raop_conn_t video = {0}; video.raop = raop; video.remote = peer; video.remotelen = 4;
     video.connection_type = CONNECTION_TYPE_AIRPLAY;
+    /* This fixture enters after HTTPD has classified the AirPlay socket. */
+    char client_session[] = "11111111-2222-4333-8444-555555555555";
+    video.client_session_id = client_session;
     http_response_t *response = NULL; conn_request(&video, request, &response);
     assert(response && http_response_get_status(response) == 200 && raop->current_video >= 0);
     assert(!raop->mgu_dacp_request_owner); /* the handler never leaks its peer context */

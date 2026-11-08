@@ -32,7 +32,7 @@
     "airplay/native/test_hls_routes.c": "7a8a854924d5a31398a67ae51d691a2a8ad3a20ac0ce6e0196d7a6e67639a277",
     "airplay/native/test_httpd_shutdown.c": "564558b1c0e359b0eb4b36633174ed0b35875357c387a2d73107ab3c9666439a",
     "airplay/native/test_music_control.cpp": "ea8b5ff8eb5a7fc6f5dde3e8407795b8a1d3768981fd49aefd2bd1bf9a9393bd",
-    "airplay/native/test_music_control_session.c": "297ee867775ffe8c5127595333cfdf2846943b0f15fde034f6a5838ed21421a6",
+    "airplay/native/test_music_control_session.c": "8603c0a4d18f8749a7d7b3ee2617e4652ccee9a7735fb9273cc6195079a30d08",
     "airplay/native/test_playlist.c": "aecbb2e857c48599fb45b8156a2e26059111f7198ccc24ec0ee35786391bf5bc",
     "airplay/native/test_playlist_events.c": "bf3abac2fa20f13e5cbae846ee74485ef385c15759851f9a54bb259de75b573e",
     "airplay/native/test_shutdown.cpp": "666995dfa160549d3810dfc0512d4deb47be986139b57a728a24a75fc817a4dc",
