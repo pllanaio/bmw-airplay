@@ -25,6 +25,8 @@ App und native Laufzeit müssen gemeinsam aktualisiert werden.
 - iPhone-Bildschirmspiegelung mit Ton über die BMW-Lautsprecher.
 - **Android** (ab 0.5.0): Videos, Musik und Fotos per „Streamen auf“ (DLNA/UPnP),
   z. B. aus Samsung Galerie, BubbleUPnP, Web Video Caster oder VLC; siehe [docs/ANDROID.md](docs/ANDROID.md).
+- **pllana Cast** (ab 0.6.0): eigene Android-App überträgt den ganzen Bildschirm mit Ton,
+  auch vom Pixel; APK im Release, Quellcode in `android/`.
 - YouTube per direkter AirPlay-/HLS-Wiedergabe; das iPhone bleibt parallel bedienbar.
 - Am Entwicklungsfahrzeug bestätigt: Spiegelung → Video → Spiegelung sowie
   direkte YouTube-Wiedergabe bei im Hintergrund laufender iPhone-App.

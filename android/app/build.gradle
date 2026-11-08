@@ -35,8 +35,9 @@ android {
     buildTypes {
         release {
             minifyEnabled false
-            def store = System.getenv('PLLANA_CAST_KEYSTORE')
-            signingConfig (store && file(store).exists()) ? signingConfigs.release : signingConfigs.debug
+            def releaseStore = System.getenv('PLLANA_CAST_KEYSTORE')
+            def useRelease = releaseStore && file(releaseStore).exists()
+            signingConfig = useRelease ? signingConfigs.release : signingConfigs.debug
         }
     }
 
