@@ -150,7 +150,7 @@ jobs:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
           persist-credentials: false
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '17'
@@ -173,7 +173,9 @@ jobs:
           (cd android && ./gradlew --no-daemon --stacktrace assembleRelease)
           mkdir -p dist
           cp android/app/build/outputs/apk/release/app-release.apk "dist/pllana-cast-$version.apk"
-          "$ANDROID_HOME"/build-tools/*/apksigner verify --print-certs "dist/pllana-cast-$version.apk" | head -5 || true
+          tools=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
+          "$tools/apksigner" verify --verbose --print-certs "dist/pllana-cast-$version.apk" | grep -E "Verified using|Signer #1 certificate DN|Number of signers"
+          "$tools/aapt2" dump badging "dist/pllana-cast-$version.apk" | grep -E "^package:|sdkVersion|targetSdkVersion|uses-permission"
           unzip -l "dist/pllana-cast-$version.apk" | grep -q classes.dex
           ls -la dist
       - uses: actions/upload-artifact@v4
