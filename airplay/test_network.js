@@ -9,12 +9,18 @@ function installed(interfaces, discovery) {
         '    ' + rule.replace('counter accept', 'counter packets 19 bytes 4028 accept') + ' # handle ' + (i + 1)).join('\n') }));
 }
 const initial = plan('apply', uid, empty(), {});
-assert(initial.some(line => /iifname "wlan_bridge" ip saddr .* tcp dport 7100-7102/.test(line)), 'BMW AP supports a local phone without an uplink lease');
+assert(initial.some(line => /iifname "wlan_bridge" ip saddr .* tcp dport 7100-7103/.test(line)), 'BMW AP supports a local phone without an uplink lease');
 assert(initial.some(line => /iifname "wlan0"/.test(line)), 'legacy hotspot station retained');
 assert(initial.some(line => /iifname "wlan1"/.test(line)), 'second uplink station supported');
 assert.deepStrictEqual(WLAN, ['wlan_bridge', 'wlan0', 'wlan1']);
-assert(initial.every(line => /(?:tcp|udp) (?:sport|dport) 7100-7102/.test(line) ||
-    /oifname .* meta skuid 13007 tcp dport 1024-65535/.test(line)), 'only receiver transport or app-owned local DACP egress');
+assert(initial.every(line => /(?:tcp|udp) (?:sport|dport) 7100-7103/.test(line) ||
+    /oifname .* meta skuid 13007 tcp dport 1024-65535/.test(line) ||
+    /^insert rule (?:ip filter|inet mgu_uplink) \S+ iifname "(?:wlan_bridge|wlan0|wlan1)" ip saddr (?:10\.0\.0\.0\/8|172\.16\.0\.0\/12|192\.168\.0\.0\/16|169\.254\.0\.0\/16) udp dport 1900 counter/.test(line) ||
+    /^insert rule (?:ip filter|inet mgu_uplink) \S+ oifname "(?:wlan_bridge|wlan0|wlan1)" ip daddr (?:10\.0\.0\.0\/8|172\.16\.0\.0\/12|192\.168\.0\.0\/16|169\.254\.0\.0\/16) meta skuid 13007 udp sport 1900 counter/.test(line) ||
+    /^insert rule (?:ip filter|inet mgu_uplink) \S+ oifname "(?:wlan_bridge|wlan0|wlan1)" ip daddr 239\.255\.255\.250 meta skuid 13007 udp dport 1900 counter/.test(line)),
+    'only receiver transport, app-owned local DACP egress and local SSDP for the DLNA renderer');
+assert(!initial.some(line => /^insert rule ip6 .*1900/.test(line)), 'SSDP stays IPv4');
+assert(initial.some(line => /inet mgu_uplink input iifname "wlan1" ip saddr 172\.16\.0\.0\/12 udp dport 1900/.test(line)), 'Android searches also arrive over the phone hotspot');
 assert(initial.filter(line => /tcp dport 1024-65535/.test(line)).every(line =>
     /oifname "(?:wlan_bridge|wlan0|wlan1)" (?:ip|ip6) daddr (?:10\.0\.0\.0\/8|172\.16\.0\.0\/12|192\.168\.0\.0\/16|169\.254\.0\.0\/16|fe80::\/10|fc00::\/7) meta skuid 13007/.test(line)),
     'DACP cannot reach public/privileged ports or change incoming policy');

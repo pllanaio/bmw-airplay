@@ -64,9 +64,21 @@ function desiredRules(chain, uid, interfaces, discovery) {
     const output = /output$/.test(chain[2]), result = [];
     for (const n of networks(interfaces)) for (const protocol of ['tcp', 'udp']) {
         if (chain[0] !== 'inet' && chain[0] !== n.family) continue;
-        const rule = output ? 'oifname "' + n.name + '" ' + n.family + ' daddr ' + n.prefix + ' meta skuid ' + uid + ' ' + protocol + ' sport 7100-7102' :
-            'iifname "' + n.name + '" ' + n.family + ' saddr ' + n.prefix + ' ' + protocol + ' dport 7100-7102';
+        // 7100-7102 AirPlay, 7103 the DLNA renderer for Android phones.
+        const rule = output ? 'oifname "' + n.name + '" ' + n.family + ' daddr ' + n.prefix + ' meta skuid ' + uid + ' ' + protocol + ' sport 7100-7103' :
+            'iifname "' + n.name + '" ' + n.family + ' saddr ' + n.prefix + ' ' + protocol + ' dport 7100-7103';
         result.push(rule + ' counter accept comment "' + tag + '"');
+    }
+    // SSDP discovery of the DLNA renderer (IPv4 only): searches from local
+    // phones, the app's answers to them and its multicast announcements.
+    if (chain[0] === 'ip' || chain[0] === 'inet') {
+        for (const n of networks(interfaces)) {
+            if (n.family !== 'ip') continue;
+            result.push((output ? 'oifname "' + n.name + '" ip daddr ' + n.prefix + ' meta skuid ' + uid + ' udp sport 1900' :
+                'iifname "' + n.name + '" ip saddr ' + n.prefix + ' udp dport 1900') + ' counter accept comment "' + tag + '"');
+        }
+        if (output) for (const name of WLAN)
+            result.push('oifname "' + name + '" ip daddr 239.255.255.250 meta skuid ' + uid + ' udp dport 1900 counter accept comment "' + tag + '"');
     }
     if (output) for (const n of networks(interfaces)) {
         if (chain[0] !== 'inet' && chain[0] !== n.family) continue;

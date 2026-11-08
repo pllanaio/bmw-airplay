@@ -18,6 +18,13 @@ if (fs.existsSync(socketPath)) {
     fs.unlinkSync(socketPath);
 }
 const receiver = new Receiver({ dataDir: data, runtime: process.env.MGU_AIRPLAY_RUNTIME || (fs.existsSync('/var/opt/pllana-airplay-receiver/current/runtime') ? '/var/opt/pllana-airplay-receiver/current/runtime' : '/var/opt/mgu-airplay/current/runtime'), audioSink: AUDIO_SINK, authentication: 'password', hls: () => resolver.hasUplink() });
+// Android: a DLNA/UPnP media renderer plays URLs from the phone through the
+// same BMW video and audio path. It is announced only while reception is on.
+const { MediaPlayer } = require('./media_player');
+const { DlnaRenderer } = require('./dlna_renderer');
+const player = new MediaPlayer({ runtime: receiver.runtime, dataDir: data, audioSink: AUDIO_SINK });
+const dlna = new DlnaRenderer({ player, dataDir: data });
+const castPresentation = () => (wanted ? dlna.presentation() : null);
 const music = new MusicControls({
     directory: () => receiver.musicDirectory,
     resolveBinary: [path.join(receiver.runtime, 'lib/ld-linux-x86-64.so.2'), '--library-path', path.join(receiver.runtime, 'lib'), path.join(receiver.runtime, 'bin/mgu-dacp-resolve')],
@@ -129,7 +136,23 @@ let queue = Promise.resolve(), client = null, heartbeat = 0, shuttingDown = fals
 let wanted = false, graceTimer = null, restartTimer = null, stableTimer = null, failures = 0;
 let selectedProfile = 'auto', selectedViewport, standaloneAudio = false, operationEpoch = 0, priorityStopping = null;
 const enqueue = fn => { queue = queue.then(fn, fn).catch(() => send({ phase: 'error', error: 'backend_operation_failed', pin: '', frame: null })); return queue; };
-const persistsWithoutUI = () => selectedProfile === 'audio' || (selectedProfile === 'auto' && standaloneAudio);
+const persistsWithoutUI = () => selectedProfile === 'audio' || (selectedProfile === 'auto' && standaloneAudio) ||
+    !!(castPresentation() && castPresentation().media === 'audio');
+// The state the frontend sees: an active Android (DLNA) playback takes the
+// screen and the music view; otherwise the AirPlay receiver's own state.
+function presented() {
+    const base = receiver.state, cast = castPresentation();
+    if (!cast) return base;
+    const fields = { connected: true, sender: 'android', origin: 'android', playlistPending: false, detached: false, error: cast.error ? 'media_failed' : null };
+    if (cast.media === 'audio') Object.assign(fields, {
+        phase: cast.transport === 'PLAYING' ? 'audio' : 'waiting', mode: 'audio', frame: null,
+        music: { epoch: cast.epoch, title: cast.title, artist: cast.artist, album: cast.album, artwork: null, metadata: null,
+            playbackState: cast.transport === 'PLAYING' ? 'playing' : cast.transport === 'PAUSED_PLAYBACK' ? 'paused' : 'unknown', shuffle: null, repeat: null,
+            controls: { playPause: true, next: cast.next, previous: false, shuffle: false, repeat: false } } });
+    else Object.assign(fields, { phase: cast.frame ? 'mirroring' : 'loading', mode: 'hls', file: cast.file, frame: cast.frame,
+        returnMode: base.mode === 'mirror' ? 'mirror' : 'waiting', music: null });
+    return Object.assign({}, base, fields);
+}
 async function ensureAudio() {
     if (!wanted || !receiver.child || (!client && !persistsWithoutUI()) || shuttingDown || intentionalStop || route.owned) return;
     const epoch = operationEpoch;
@@ -153,7 +176,7 @@ receiver.on('media', mode => {
 function send(state) {
     if (client && !client.destroyed) {
         if (client.writableLength > 32768) { client.destroy(); return; }
-        client.write(JSON.stringify({ state: state || receiver.state }) + '\n');
+        client.write(JSON.stringify({ state: state || presented() }) + '\n');
     }
 }
 function cancelReception() {
@@ -169,8 +192,10 @@ async function finishStop(priorOperations) {
         // Start closing native sockets immediately, even when a BMW audio
         // request is still pending in the ordinary operation queue.
         const native = Promise.resolve().then(() => receiver.stop()).then(() => null, error => error);
+        // Android playback ends with the session; never blocks the stop.
+        const cast = Promise.resolve().then(() => dlna.stop()).then(() => player.close()).catch(() => {});
         const cleanup = Promise.resolve(priorOperations).then(() => route.release()).then(() => null, error => error);
-        const results = await Promise.all([native, cleanup]);
+        const results = await Promise.all([native, cleanup, cast]);
         if (!results[1]) receiver.update({ audio: false });
         if (results[0] || results[1]) throw results[0] || results[1];
     } finally { intentionalStop--; }
@@ -208,6 +233,11 @@ function startReceiver(keepPassword) {
     clearTimeout(restartTimer); restartTimer = null;
     resolver.refresh();
     if (!receiver.start({ profile: selectedProfile, viewport: selectedViewport, keepPassword: !!keepPassword })) return false;
+    if (!dlna.running) {
+        player.video = selectedProfile !== 'audio';
+        if (selectedViewport) player.setViewport(selectedViewport.width, selectedViewport.height);
+        dlna.start().catch(() => receiver.emit('diagnostic', 'dlna_start_failed'));
+    }
     clearTimeout(stableTimer);
     stableTimer = setTimeout(() => { stableTimer = null; if (receiver.child) failures = 0; }, STABLE_MS);
     receiver.update({ audio: false });
@@ -256,7 +286,17 @@ let uplinkTimer = null;
 receiver.on('state', state => {
     if (wanted && state.mode === 'audio') standaloneAudio = true;
     else if (wanted && (state.mode === 'mirror' || state.mode === 'hls')) standaloneAudio = false;
-    graceWithoutUI(); send(state);
+    graceWithoutUI(); send(presented());
+});
+let castAudioPending = false;
+dlna.on('diagnostic', code => receiver.emit('diagnostic', code));
+dlna.on('state', () => {
+    const cast = castPresentation();
+    if (cast && cast.transport === 'PLAYING' && !route.owned && !castAudioPending) {
+        castAudioPending = true;
+        enqueue(() => { castAudioPending = false; return ensureAudio(); });
+    }
+    graceWithoutUI(); send(presented());
 });
 receiver.on('ended', () => {
     if (intentionalStop) return;
@@ -287,6 +327,7 @@ const server = net.createServer(s => {
                     if (!request.viewport || !validVideoViewport(request.viewport.width, request.viewport.height)) { s.destroy(); return; }
                     selectedViewport = { width: request.viewport.width, height: request.viewport.height };
                     if (receiver.child) receiver.setVideoViewport(selectedViewport.width, selectedViewport.height);
+                    player.setViewport(selectedViewport.width, selectedViewport.height);
                 }
                 let epoch = operationEpoch;
                 enqueue(async () => {
@@ -317,16 +358,24 @@ const server = net.createServer(s => {
                 if (!validVideoViewport(request.width, request.height)) { s.destroy(); return; }
                 selectedViewport = { width: request.width, height: request.height };
                 receiver.setVideoViewport(request.width, request.height);
+                player.setViewport(request.width, request.height);
             }
             else if (request.command === 'stop') {
                 if (request.id !== undefined && (typeof request.id !== 'string' || !/^[a-zA-Z0-9_-]{1,64}$/.test(request.id))) { s.destroy(); return; }
                 replyStop(s, request.id, priorityStop());
             }
-            else if (request.command === 'end-video') receiver.endVideo();
-            else if (request.command === 'resume-mirror') receiver.resumeMirror();
+            else if (request.command === 'end-video') { if (castPresentation()) dlna.stopPlayback(false); else receiver.endVideo(); }
+            else if (request.command === 'resume-mirror') { if (castPresentation()) dlna.stopPlayback(false); else receiver.resumeMirror(); }
             else if (request.command === 'music-control') {
                 if (!musicRequest(request)) { s.destroy(); return; }
-                remoteMusic(request);
+                const cast = castPresentation();
+                if (/^dlna-/.test(request.epoch)) {
+                    // Android music: the renderer itself is the transport.
+                    if (cast && cast.media === 'audio' && cast.epoch === request.epoch) {
+                        if (request.action === 'playPause') dlna.togglePause();
+                        else if (request.action === 'next' && cast.next) dlna.advance();
+                    }
+                } else remoteMusic(request);
             }
             else if (request.command !== 'heartbeat') { s.destroy(); return; }
         }

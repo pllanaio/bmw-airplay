@@ -32,4 +32,12 @@ function diagnose(uid, io) {
         return 'Alte AirPlay-Laufzeit gehört zu UID ' + bound[1] + ' (App: ' + uid + '). „AirPlay receiver“ über „Releases“ installieren.';
     return 'Alte AirPlay-Laufzeit ' + (old.version || '') + ' antwortet nicht. „AirPlay receiver“ über „Releases“ installieren.';
 }
-module.exports = { diagnose, STATUS, RECEIVER, OLD };
+// Miracast pre-check written by the receiver runtime (p2p_probe.js).
+const P2P = '/run/pllana-airplay/p2p.json';
+function wifiDirect(io) {
+    const record = readJson(io || fs, P2P);
+    const texts = { concurrent: 'Miracast-Vorprüfung: Wi-Fi Direct neben dem Hotspot möglich',
+        exclusive: 'Miracast-Vorprüfung: Wi-Fi Direct nur ohne Hotspot', unsupported: 'Miracast-Vorprüfung: WLAN-Chip ohne Wi-Fi Direct' };
+    return record && texts[record.summary] || '';
+}
+module.exports = { diagnose, wifiDirect, STATUS, RECEIVER, OLD, P2P };
