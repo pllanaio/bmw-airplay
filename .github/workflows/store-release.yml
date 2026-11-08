@@ -33,7 +33,7 @@ jobs:
             libssl-dev libplist-dev libglib2.0-dev libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev \
             gstreamer1.0-tools gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-plugins-bad \
             gstreamer1.0-libav gstreamer1.0-alsa gstreamer1.0-x libsoup-3.0-0 glib-networking file \
-            libegl1-mesa-dev libgles2-mesa-dev libwayland-dev libwayland-bin libgl1-mesa-dri iproute2 util-linux
+            libegl1-mesa-dev libgles2-mesa-dev libwayland-dev libwayland-bin libgl1-mesa-dri iproute2 util-linux iw
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
           persist-credentials: false
@@ -58,6 +58,8 @@ jobs:
           R=.build/airplay/runtime
           "$R/lib/ld-linux-x86-64.so.2" --library-path "$R/lib" --list "$R/bin/uxplay" > /dev/null
           "$R/lib/ld-linux-x86-64.so.2" --library-path "$R/lib" --list "$R/bin/mgu-dacp-resolve" > /dev/null
+          "$R/lib/ld-linux-x86-64.so.2" --library-path "$R/lib" --list "$R/bin/mgu-media-player" > /dev/null
+          "$R/lib/ld-linux-x86-64.so.2" --library-path "$R/lib" "$R/bin/iw" --version
           ! readelf -d "$R/bin/mgu-dacp-resolve" | grep -q 'Shared library: \[/'
           "$R/lib/ld-linux-x86-64.so.2" --library-path "$R/lib" "$R/bin/uxplay" -h > uxplay-help.txt 2>&1 || true
           grep -q -- '-hls' uxplay-help.txt
@@ -102,6 +104,8 @@ jobs:
           node airplay/test_audio_metadata.js && node airplay/test_music_artwork_bridge.js && node airplay/test_music_view.js
           node airplay/test_music_controls.js
           node airplay/test_bmw_media.js && node airplay/test_carplay_focus.js
+          node airplay/test_dlna.js && node airplay/test_p2p_probe.js
+          MGU_PLAYER_TEST_RUNTIME=$PWD/.build/airplay/runtime node airplay/test_media_player.js
           python3 test/test_store_contract.py
       - name: Package runtime tool and app
         run: |
@@ -121,6 +125,9 @@ jobs:
           tar -xzOf dist/pllana-airplay-receiver@*.tgz component.json | python3 -c "import json,sys;c=json.load(sys.stdin);assert c['id']=='pllana-airplay-receiver' and c['activate']==['node','activate.js'],c"
           tar -tzf dist/pllana-airplay-receiver@*.tgz | grep -qx 'files/runtime/bin/uxplay'
           tar -tzf dist/pllana-airplay-receiver@*.tgz | grep -qx 'files/runtime/bin/mgu-airplay-mdns-route'
+          tar -tzf dist/pllana-airplay-receiver@*.tgz | grep -qx 'files/runtime/bin/mgu-media-player'
+          tar -tzf dist/pllana-airplay-receiver@*.tgz | grep -qx 'files/runtime/bin/iw'
+          tar -tzf dist/pllana-airplay-receiver@*.tgz | grep -qx 'files/p2p_probe.js'
           ! tar -tzf dist/pllana_airplay@*.tgz | grep -q '^node_modules/oap-sdk/'
           tar -xzOf dist/pllana_airplay@*.tgz package.json | python3 -c "import json,sys;p=json.load(sys.stdin);assert p['mguInternet'] is True and p['mguHmi']==['ID7'],p"
       - name: Check out pinned Store validator

@@ -20,7 +20,7 @@ const modules={path,'./kit/mgu':{run:app=>{started=app.start(ctx);}},'./backend_
     './video_bridge':{VideoBridge:class{ready(){return videoReady;} detach(){} attach(){return true;}draw(){videoDraws++;}}},
     './view':{drawHome(c,s,n,l,a,control){homeFrames++;musicControl=control;lastNotice=n;}},'./logo_bridge':{LogoBridge:class{draw(){}}},
     './music_artwork_bridge':{MusicArtworkBridge:class{update(){}drop(){}}},
-    './brand_logo':{register(){}},'./kit/record':{setImage(){}},'./diagnose':{diagnose:()=>''}};
+    './brand_logo':{register(){}},'./kit/record':{setImage(){}},'./diagnose':{diagnose:()=>'',wifiDirect:()=>''}};
 vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../apps/pllana_airplay/main.js'),'utf8'),{
     require:name=>{assert(modules[name],name);return modules[name];},
     process:{on:(name,fn)=>{signals[name]=fn;},getuid:()=>12233,exit(){}},Date:{now:()=>clock},Promise,console

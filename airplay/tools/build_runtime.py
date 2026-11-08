@@ -135,6 +135,10 @@ def main():
     flags = subprocess.check_output(['pkg-config', '--cflags', '--libs', 'gstreamer-video-1.0'], text=True).split()
     run(['gcc', '-shared', '-fPIC', '-O2', '-Wall', '-Wextra', '-Werror',
          ROOT / 'airplay/native/gstmguvideosink.c', '-o', RUNTIME / 'plugins/libgstmguvideo.so'] + flags)
+    # Android/DLNA URL player: playbin with the same output as AirPlay video.
+    gst_flags = subprocess.check_output(['pkg-config', '--cflags', '--libs', 'gstreamer-1.0', 'gio-2.0'], text=True).split()
+    run(['gcc', '-O2', '-march=x86-64', '-mtune=generic', '-Wall', '-Wextra', '-Werror', '-I', ROOT / 'airplay/native',
+         ROOT / 'airplay/native/mgu_media_player.c', '-o', RUNTIME / 'bin/mgu-media-player'] + gst_flags + ['-lm'])
     shutil.copy2(BUILD / 'uxplay-build/uxplay', RUNTIME / 'bin/uxplay')
     shutil.copy2(dns, RUNTIME / 'lib/libdns_sd.so')
     # Mirroring and YouTube HLS; no system plugin discovery on the target.
@@ -142,7 +146,9 @@ def main():
                     'videoconvertscale', 'videofilter', 'audioconvert', 'audioresample',
                     'volume', 'level', 'typefindfunctions', 'jpeg', 'png', 'imagefreeze', 'pango',
                     'playback', 'autodetect', 'alsa', 'audiotestsrc',
-                    'soup', 'adaptivedemux2', 'hls', 'isomp4', 'mpegtsdemux', 'matroska', 'tcp', 'deinterlace']
+                    'soup', 'adaptivedemux2', 'hls', 'isomp4', 'mpegtsdemux', 'matroska', 'tcp', 'deinterlace',
+                    # Typical Android media files: MP3 with ID3 tags, WAV, OGG/Opus, AVI.
+                    'id3demux', 'wavparse', 'ogg', 'avi']
     plugins = Path('/usr/lib/x86_64-linux-gnu/gstreamer-1.0')
     # Remove the old cropping plugin from an incremental 0.4.4 build too.
     (RUNTIME / 'plugins/libgstvideocrop.so').unlink(missing_ok=True)
@@ -152,12 +158,14 @@ def main():
             raise RuntimeError('Missing build plugin ' + str(src))
         shutil.copy2(src, RUNTIME / 'plugins' / src.name)
     shutil.copy2('/usr/bin/gst-launch-1.0', RUNTIME / 'bin/gst-launch-1.0')
+    # Read-only Wi-Fi Direct capability probe (Miracast pre-check, root only).
+    shutil.copy2('/usr/sbin/iw', RUNTIME / 'bin/iw')
     # souphttpsrc dlopens libsoup, and GIO loads its TLS backend as a module.
     soup = Path('/usr/lib/x86_64-linux-gnu/libsoup-3.0.so.0')
     tls = Path('/usr/lib/x86_64-linux-gnu/gio/modules/libgiognutls.so')
     shutil.copy2(tls, RUNTIME / 'gio' / tls.name)
     shutil.copy2('/etc/ssl/certs/ca-certificates.crt', RUNTIME / 'etc/ca-certificates.crt')
-    roots = list((RUNTIME / 'plugins').glob('*.so')) + [RUNTIME / 'bin/uxplay', RUNTIME / 'bin/gst-launch-1.0',
+    roots = list((RUNTIME / 'plugins').glob('*.so')) + [RUNTIME / 'bin/uxplay', RUNTIME / 'bin/gst-launch-1.0', RUNTIME / 'bin/mgu-media-player', RUNTIME / 'bin/iw',
             RUNTIME / 'bin/mgu-dacp-resolve', dns, soup, tls]
     # Native SmartX plugins load these at runtime. Do not mix the HU's glibc 2.27
     # internals (notably libdl/libpthread) into the private glibc runtime.
@@ -183,7 +191,7 @@ def main():
     (RUNTIME / 'lib/libasound.so.2').unlink(missing_ok=True)
     if not (RUNTIME / 'lib/ld-linux-x86-64.so.2').is_file():
         raise RuntimeError('Private glibc loader missing')
-    for name in ['gstreamer1.0-plugins-base', 'gstreamer1.0-plugins-good', 'gstreamer1.0-plugins-bad',
+    for name in ['iw', 'libnl-3-200', 'libnl-genl-3-200', 'gstreamer1.0-plugins-base', 'gstreamer1.0-plugins-good', 'gstreamer1.0-plugins-bad',
                  'gstreamer1.0-libav', 'libc6', 'libssl3', 'libplist3',
                  'libsoup-3.0-0', 'glib-networking', 'libgnutls30', 'ca-certificates']:
         copyright_file = Path('/usr/share/doc') / name / 'copyright'
@@ -197,13 +205,13 @@ def main():
         executable.chmod(0o755)
     (RUNTIME / 'lib/ld-linux-x86-64.so.2').chmod(0o755)
     record = {
-        'format': 'mgu-airplay-runtime-v1', 'version': '0.4.8', 'architecture': 'x86_64',
+        'format': 'mgu-airplay-runtime-v1', 'version': '0.5.0', 'architecture': 'x86_64',
         'uxplay': {'version': '1.73.7', 'revision': UX_REV},
         'mdns_client': {'version': '765.20.4', 'revision': MDNS_REV, 'daemon': 'existing MGU mdnsd'},
         'source_patch': {'file': 'lib/CMakeLists.txt', 'sha256': sha(cmake)},
         'connection_events_patch_sha256': sha(ux_source),
         'hls_renderer_patch_sha256': sha(video_source),
-        'features': ['detach', 'native-detach', 'playlist', 'video-modes', 'media-stop', 'audio-only', 'auto-media', 'audio-handoff', 'video-stretch', 'video-viewport', 'session-status', 'audio-metadata', 'music-control', 'full-disconnect', 'mdns-route'],
+        'features': ['detach', 'native-detach', 'playlist', 'video-modes', 'media-stop', 'audio-only', 'auto-media', 'audio-handoff', 'video-stretch', 'video-viewport', 'session-status', 'audio-metadata', 'music-control', 'full-disconnect', 'mdns-route', 'media-player'],
         'audio_profile_patch_sha256': sha(ROOT / 'airplay/tools/patch_audio_mode.py'),
         'audio_metadata_patch_sha256': sha(ROOT / 'airplay/tools/patch_audio_metadata.py'),
         'audio_metadata_sha256': sha(ROOT / 'airplay/native/mgu_audio_metadata.h'),
@@ -218,6 +226,7 @@ def main():
         'hls_output_sha256': sha(ROOT / 'airplay/native/mgu_hls_output.h'),
         'crash_trace_sha256': sha(ROOT / 'airplay/native/mgu_crash_trace.h'),
         'direct_play_sha256': sha(ROOT / 'airplay/native/mgu_direct_play.h'),
+        'media_player_sha256': sha(ROOT / 'airplay/native/mgu_media_player.c'),
         'playlist_sha256': sha(ROOT / 'airplay/native/mgu_playlist.h'),
         'reverse_sha256': sha(ROOT / 'airplay/native/mgu_reverse.h'),
         'hls_lifecycle_patches': {name: sha(source / name) for name in [

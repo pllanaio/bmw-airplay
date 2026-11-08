@@ -92,6 +92,16 @@ function monitorNetwork(uid, changed, io) {
     const handle = io.setInterval(() => changed(applyNetwork(uid, io)), 5000);
     return () => io.clearInterval(handle);
 }
+// Miracast pre-check: read-only Wi-Fi Direct capability report for the app.
+function probeWifiDirect(io) {
+    io = io || { cp };
+    try {
+        // The probe bounds itself (iw has a 5 s limit) and only reads.
+        const job = io.cp.spawn('/usr/bin/node', [path.join(BASE, 'p2p_probe.js')], { stdio: 'inherit' });
+        job.on('error', () => {});
+        return true;
+    } catch (e) { return false; }
+}
 let child = null, stopping = false, timer = null, cancelNetwork = null, runningTimer = null;
 function start() {
     if (stopping) return;
@@ -112,6 +122,7 @@ function start() {
         runningTimer = null;
         if (!child) return;
         status('running', { uid, network: netError ? 'failed' : 'ok' });
+        probeWifiDirect();
         cancelNetwork = monitorNetwork(uid, error => {
             if (stopping || error === netError) return;
             netError = error;
@@ -137,7 +148,7 @@ for (const sig of ['SIGTERM', 'SIGINT']) process.on(sig, () => {
     status('stopped');
     if (child) child.kill(sig); else process.exit(0);
 });
-module.exports = { parseUids, removeLegacy, applyNetwork, monitorNetwork };
+module.exports = { parseUids, removeLegacy, applyNetwork, monitorNetwork, probeWifiDirect };
 if (require.main === module) {
     if (process.getuid() !== 0) throw Error('root_supervisor_required');
     start();

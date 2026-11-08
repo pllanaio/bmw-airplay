@@ -6,7 +6,7 @@ const { VideoBridge } = require('./video_bridge');
 const { drawHome } = require('./view');
 const { LogoBridge } = require('./logo_bridge');
 const { MusicArtworkBridge } = require('./music_artwork_bridge');
-const { diagnose } = require('./diagnose');
+const { diagnose, wifiDirect } = require('./diagnose');
 require('./brand_logo').register(require('./kit/record').setImage);
 
 mgu.run({ async start(ctx) {
@@ -17,7 +17,7 @@ mgu.run({ async start(ctx) {
     const logo = new LogoBridge(ctx.display);
     const artwork = new MusicArtworkBridge(ctx.display, path.join(ctx.dataDir, 'airplay'));
     let state = receiver.state, notice = '', closing = false, controlsUntil = 0, diagnosis = '', diagnosedAt = 0;
-    let mirrorResumeUntil = 0, disconnecting = null;
+    let mirrorResumeUntil = 0, disconnecting = null, p2pText = '', p2pAt = 0;
     const isAudio = next => next.mode === 'audio' || next.profile === 'audio';
     const screenViewport = () => {
         const screen = ctx.display.gpu && ctx.display.gpu.screen;
@@ -128,7 +128,8 @@ mgu.run({ async start(ctx) {
             // While the receiver service is unreachable, say why (every 2 s).
             if (!unreachable()) diagnosis = '';
             else if (Date.now() - diagnosedAt > 2000) { diagnosedAt = Date.now(); diagnosis = diagnose(uid); }
-            drawHome(c, state, notice || diagnosis, logo, artwork, musicControl);
+            if (Date.now() - p2pAt > 10000) { p2pAt = Date.now(); p2pText = wifiDirect(); }
+            drawHome(c, p2pText ? Object.assign({}, state, { p2pText }) : state, notice || diagnosis, logo, artwork, musicControl);
         }
         if (!closing) await ui.image('MAIN_GFX', c);
     });

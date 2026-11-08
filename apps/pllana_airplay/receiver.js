@@ -486,4 +486,4 @@ class Receiver extends EventEmitter {
     }
     destroy() { this.closed = true; return this.stop(); }
 }
-module.exports = { Receiver, frameHeader, validVideoViewport };
+module.exports = { Receiver, frameHeader, validVideoViewport, writeVideoViewport, removeVideoViewport, liveProcessGroup };

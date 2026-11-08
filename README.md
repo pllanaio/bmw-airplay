@@ -23,6 +23,8 @@ App und native Laufzeit müssen gemeinsam aktualisiert werden.
 ## Funktionen und bestätigter Stand
 
 - iPhone-Bildschirmspiegelung mit Ton über die BMW-Lautsprecher.
+- **Android** (ab 0.5.0): Videos, Musik und Fotos per „Streamen auf“ (DLNA/UPnP),
+  z. B. aus Samsung Galerie, BubbleUPnP, Web Video Caster oder VLC; siehe [docs/ANDROID.md](docs/ANDROID.md).
 - YouTube per direkter AirPlay-/HLS-Wiedergabe; das iPhone bleibt parallel bedienbar.
 - Am Entwicklungsfahrzeug bestätigt: Spiegelung → Video → Spiegelung sowie
   direkte YouTube-Wiedergabe bei im Hintergrund laufender iPhone-App.

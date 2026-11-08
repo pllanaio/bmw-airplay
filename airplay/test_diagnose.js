@@ -38,3 +38,13 @@ console.log('Receiver diagnostics and app UID lookup passed');
     }
     console.log('Old runtime removal through the deploy tool passed');
 }
+// Miracast pre-check text from the receiver runtime.
+{
+    const { wifiDirect, P2P } = require('../apps/pllana_airplay/diagnose');
+    const io = summary => ({ readFileSync: file => { if (file !== P2P) throw Error('ENOENT'); return JSON.stringify({ summary }); } });
+    assert.strictEqual(wifiDirect(io('concurrent')), 'Miracast-Vorprüfung: Wi-Fi Direct neben dem Hotspot möglich');
+    assert.strictEqual(wifiDirect(io('unsupported')), 'Miracast-Vorprüfung: WLAN-Chip ohne Wi-Fi Direct');
+    assert.strictEqual(wifiDirect(io('unknown')), '');
+    assert.strictEqual(wifiDirect({ readFileSync: () => { throw Error('ENOENT'); } }), '');
+    console.log('Miracast pre-check text passed');
+}

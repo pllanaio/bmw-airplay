@@ -8,7 +8,7 @@ einem separat installierten UxPlay-Empfänger und BMW-Audiorouting.
 Die bisherige Erprobung ist keine Freigabe für alle MGU-Hardwarestände,
 Fahrzeugausstattungen, iPhone-Apps oder iOS-Versionen.
 
-Der vorbereitete Quellstand für App und Laufzeit ist **0.4.7**. Die neuen
+Der vorbereitete Quellstand für App und Laufzeit ist **0.5.0**. Die neuen
 Änderungen sind lokal geprüft und noch nicht am Fahrzeug abgenommen. Die
 Fahrzeugbestätigungen weiter unten beziehen sich auf die dort genannten
 älteren Versionen.
@@ -16,6 +16,29 @@ Fahrzeugbestätigungen weiter unten beziehen sich auf die dort genannten
 Der historische Git-Tag v0.2.6 bezeichnet den ersten veröffentlichten
 Quellcode-Snapshot. Die nachträgliche Store-Anbindung und diese ausführliche
 Dokumentation stehen auf main. Der Tag wird dafür nicht nachträglich verschoben.
+
+## Änderungen in 0.5.0 – Android-Streaming (DLNA) und Miracast-Vorprüfung
+
+Ziel: Eine Universallösung für iPhone und Android in derselben App.
+Details in [ANDROID.md](ANDROID.md).
+
+- Neuer DLNA/UPnP-MediaRenderer im Backend: Android-Apps mit „Streamen auf“
+  (Samsung Galerie/Musik, BubbleUPnP, Web Video Caster, VLC, …) finden
+  „BMW AirPlay by pllana.io“ im BMW-WLAN und über den Handy-Hotspot.
+- Neuer nativer Player `mgu-media-player` (GStreamer playbin) mit derselben
+  Ausgabe wie AirPlay-Direktvideo: Vollbild, Skalierung, BMW-Ton.
+- Musik vom Android-Handy erscheint in der Musikansicht; Play/Pause und
+  Weiter funktionieren aus dem Auto. „Video beenden“ beendet auch Android.
+- Firewall: TCP 7103 und SSDP (UDP 1900) nur lokal auf den WLAN-
+  Schnittstellen und nur für private IPv4-Adressen.
+- Miracast-Vorprüfung: Die Laufzeit meldet, ob der WLAN-Chip Wi-Fi Direct
+  (auch parallel zum Uplink) kann; die App zeigt das Ergebnis unten an.
+- AirPlay hat weiterhin keine Vorrangsteuerung gegenüber CarPlay (AirPlay
+  nur ohne aktives CarPlay).
+
+Nicht am Fahrzeug geprüft. In CI geprüft: echter Player mit HTTP-Video,
+Start-Position, Pause, Seek, Ende, Audio, fehlende Datei; kompletter
+UPnP-Ablauf (SOAP → Renderer → Player → Frames).
 
 ## Änderungen in 0.4.8 – AirPlay über den WLAN-Uplink (iPhone-Hotspot)
 

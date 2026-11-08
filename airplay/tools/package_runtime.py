@@ -34,7 +34,7 @@ def collect():
         mode = 0o755 if name.startswith('bin/') or name == 'lib/ld-linux-x86-64.so.2' else 0o644
         entries.append(('runtime/' + name, data, mode))
     entries.append(('runtime/build-manifest.json', (RUNTIME / 'build-manifest.json').read_bytes(), 0o644))
-    for name, mode in [('launch.js', 0o644), ('activate.js', 0o644), ('deactivate.js', 0o644), ('check.sh', 0o755)]:
+    for name, mode in [('launch.js', 0o644), ('activate.js', 0o644), ('deactivate.js', 0o644), ('p2p_probe.js', 0o644), ('check.sh', 0o755)]:
         entries.append((name, (ROOT / 'airplay/runtime' / name).read_bytes(), mode))
     entries.append(('network.js', (ROOT / 'airplay/network.js').read_bytes(), 0o644))
     for name in ['LICENSE', 'LICENSE.md', 'THIRD_PARTY_NOTICES.md']:

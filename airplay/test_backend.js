@@ -1,7 +1,7 @@
 'use strict';
 const assert = require('assert'), vm = require('vm'), fs = require('fs'), EventEmitter = require('events');
 const sockets = [], writes = [], timers = [], startupOrder = [], reports = [], persisted = [];
-let receiver, route, accept, remote, uplinkOnline = false;
+let receiver, route, accept, remote, player, dlna, uplinkOnline = false;
 class Receiver extends EventEmitter {
     constructor(options) { super(); receiver = this; this.runtime = options.runtime; this.musicDirectory = ''; this.options = options; this.state = {}; this.child = null; this.starts = 0; this.stops = 0; }
     start(options) { startupOrder.push('start'); this.child = {}; this.features = {}; this.starts++; this.lastOptions = options; const profile=options && options.profile || 'auto'; this.musicDirectory='/private/music-'+this.starts; this.update({phase:'waiting', profile, mode:profile==='audio'?'audio':'waiting', connected:false,playlistPending:false,returnMode:'waiting',frame:null,music:{title:'',epoch:null,controls:{}},error:null}); this.emit('music-directory',this.musicDirectory); return true; }
@@ -37,6 +37,11 @@ const modules = {
     './resolver':{refresh:()=>startupOrder.push('dns'),hasUplink:()=>uplinkOnline},fs:fakeFs,path:require('path'),'./receiver':{Receiver,validVideoViewport:require('../apps/pllana_airplay/receiver').validVideoViewport},
     './audio_route':{AudioRoute,AUDIO_SINK:'fakesink'},'./mdns_responder':{UplinkResponder:class extends EventEmitter{setServices(s){this.services=s;}setLease(l){this.lease=l;}stop(){this.stopped=true;}}},'./kit/signals':{},
     './music_controls':{MusicControls},
+    './media_player':{MediaPlayer:class extends EventEmitter{constructor(o){super();player=this;this.options=o;this.state={state:'stopped'};this.closed=0;}setViewport(w,h){this.viewport={width:w,height:h};return true;}close(){this.closed++;return Promise.resolve();}stop(){}}},
+    './dlna_renderer':{DlnaRenderer:class extends EventEmitter{constructor(o){super();dlna=this;this.options=o;this.running=false;this.cast=null;this.starts=0;this.stops=0;this.actions=[];}
+        start(){this.running=true;this.starts++;return Promise.resolve();}stop(){this.running=false;this.stops++;this.cast=null;return Promise.resolve();}
+        presentation(){return this.running?this.cast:null;}set(cast){this.cast=cast;this.emit('state',cast);}
+        stopPlayback(){this.actions.push('stop');this.set(null);}togglePause(){this.actions.push('toggle');}advance(){this.actions.push('next');}}},
     child_process:{spawn:(binary,args,options)=>{
         const child=new EventEmitter(); child.kill=signal=>{child.killed=signal;};
         reports.push({binary,args,options,child}); return child;
@@ -115,6 +120,33 @@ const turn = () => new Promise(resolve=>setImmediate(resolve));
     receiver.resumes = 0; receiver.resumeMirror = () => { receiver.resumes++; return true; };
     s.emit('data', '{"command":"resume-mirror"}\n'); await turn(); assert.strictEqual(receiver.resumes, 1);
     receiver.update({ returnMode: 'waiting', mode: 'waiting' });
+    // Android (DLNA): announced with reception, takes the screen while it plays.
+    assert.strictEqual(dlna.starts,1,'the DLNA renderer starts with reception');
+    assert.strictEqual(player.video,true,'the automatic profile renders Android video');
+    assert.deepStrictEqual(player.viewport,{width:1600,height:520},'the Android player follows the UI viewport');
+    const androidFrame={width:1600,height:520,sequence:3,generation:'1:9'};
+    writes.length=0; route.release();
+    dlna.set({transport:'PLAYING',media:'video',frame:androidFrame,file:'/dev/shm/mgu-video-android-1',error:null,title:'Clip',artist:'',album:'',epoch:'dlna-1',next:false});
+    await turn(); await turn();
+    let shown=writes[writes.length-1].state;
+    assert.strictEqual(shown.sender,'android'); assert.strictEqual(shown.mode,'hls'); assert.strictEqual(shown.phase,'mirroring');
+    assert.strictEqual(shown.file,'/dev/shm/mgu-video-android-1'); assert.strictEqual(shown.connected,true);
+    assert(route.owned,'Android playback acquires the BMW audio route');
+    receiver.videoEnds=0;
+    s.emit('data','{"command":"end-video"}\n'); await turn();
+    assert.deepStrictEqual(dlna.actions,['stop'],'Video beenden stops the Android playback');
+    assert.strictEqual(receiver.videoEnds,0,'and leaves the AirPlay receiver alone');
+    assert.strictEqual(writes[writes.length-1].state.sender,undefined,'the AirPlay state returns afterwards');
+    dlna.set({transport:'PLAYING',media:'audio',frame:null,file:'',error:null,title:'Song',artist:'Artist',album:'Album',epoch:'dlna-2',next:true});
+    shown=writes[writes.length-1].state;
+    assert.strictEqual(shown.mode,'audio'); assert.strictEqual(shown.phase,'audio'); assert.strictEqual(shown.music.title,'Song');
+    assert.strictEqual(shown.music.controls.playPause,true); assert.strictEqual(shown.music.controls.next,true);
+    s.emit('data','{"command":"music-control","action":"playPause","epoch":"dlna-2"}\n');
+    s.emit('data','{"command":"music-control","action":"next","epoch":"dlna-2"}\n');
+    s.emit('data','{"command":"music-control","action":"playPause","epoch":"dlna-1"}\n'); await turn();
+    assert.deepStrictEqual(dlna.actions,['stop','toggle','next'],'BMW music buttons control Android music; stale epochs are ignored');
+    assert.strictEqual(remote.actions.length,0,'Android music never reaches the iPhone remote');
+    dlna.set(null);
     // Native receiver crash: automatic restart with the known password.
     receiver.crash(); await turn();
     assert.strictEqual(receiver.state.phase, 'recovering');
@@ -370,6 +402,8 @@ const turn = () => new Promise(resolve=>setImmediate(resolve));
     finalReportUI.setEncoding=()=>{}; finalReportUI.write=()=>{}; finalReportUI.destroy=()=>{finalReportUI.destroyed=true;finalReportUI.emit('close');};
     accept(finalReportUI); finalReportUI.emit('data','{"command":"start"}\n'); await turn();
     assert(receiver.child,'a failed report spawn leaves normal AirPlay startup available');
-    finalReportUI.emit('data','{"command":"stop"}\n'); await turn();
+    const dlnaStops=dlna.stops;
+    finalReportUI.emit('data','{"command":"stop"}\n'); await turn(); await turn();
+    assert.strictEqual(dlna.stops,dlnaStops+1,'Trennen also ends the Android renderer');
     console.log('Busy audio startup, media reacquisition, focus loss, crash recovery, frontend grace and explicit stop passed');
 })().catch(e=>{console.error(e);process.exitCode=1;});
