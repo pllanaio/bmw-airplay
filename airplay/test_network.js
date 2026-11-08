@@ -59,17 +59,20 @@ assert.deepStrictEqual(discovery, { interface: 'wlan1', ip: '172.20.10.2', netwo
 assert.strictEqual(discoveryLease({ interface: 'vethuplink' }, {}, []), null, 'USB retains the existing BMW AP path');
 assert.strictEqual(discoveryLease(hotspot, {}, [0]), null, 'a stale lease cannot open another interface');
 assert.throws(() => discoveryLease(Object.assign({}, hotspot, { ip: '1.1.1.2', prefix: 24 }), station, [0]), /mdns_lease_invalid/);
-assert.throws(() => discoveryLease(hotspot, station, []), /mdns_service_unavailable/);
+assert.deepStrictEqual(discoveryLease(hotspot, station, []).uids, [], 'without a BMW mdnsd socket the app responder still gets uplink rules');
+assert.throws(() => discoveryLease(hotspot, station, [70000]), /mdns_service_unavailable/);
 const overlapping = Object.assign({}, station, { wlan_bridge: [{ address: '172.20.10.1', family: 'IPv4', internal: false, netmask: '255.255.255.0' }] });
 assert.throws(() => discoveryLease(hotspot, overlapping, [0]), /mdns_subnet_overlap/, 'ambiguous BMW/hotspot subnets are left intact');
 const safeAP = Object.assign({}, station, { wlan_bridge: [{ address: '192.168.43.1', family: 'IPv4', internal: false, cidr: '192.168.43.1/24' }] });
 assert(discoveryLease(hotspot, safeAP, [0]));
 const mdns = plan('apply', uid, empty(), station, discovery).filter(line => /5353/.test(line));
 assert(mdns.length > 0 && mdns.every(line => /(?:iifname|oifname) "wlan1"/.test(line)));
-assert(mdns.filter(line => /oifname/.test(line)).every(line => /ip ttl 255/.test(line)));
+assert(mdns.filter(line => /oifname/.test(line) && /meta skuid (?:0|65534) /.test(line)).every(line => /ip ttl 255/.test(line)), 'daemon responses keep TTL 255');
+assert(mdns.some(line => new RegExp('oifname "wlan1" ip saddr 172\\.20\\.10\\.2 ip daddr 224\\.0\\.0\\.251 meta skuid ' + uid + ' udp sport 5353 udp dport 5353').test(line)), 'app responder multicast');
+assert(mdns.some(line => new RegExp('ip daddr 172\\.20\\.10\\.0/28 meta skuid ' + uid + ' udp sport 5353 counter').test(line)), 'app responder unicast replies incl. QU to port 5353');
 assert(mdns.filter(line => /iifname/.test(line)).every(line => !/ip ttl/.test(line)),
     'lease-bound multicast and legacy unicast queries may use a lower TTL; outgoing mDNS responses keep255');
-assert(mdns.filter(line => /oifname/.test(line)).every(line => /ip saddr 172\.20\.10\.2/.test(line) && /meta skuid (?:0|65534) udp sport 5353/.test(line)),
+assert(mdns.filter(line => /oifname/.test(line)).every(line => /ip saddr 172\.20\.10\.2/.test(line) && new RegExp('meta skuid (?:0|65534|' + uid + ') udp sport 5353').test(line)),
     'even root-owned daemon sockets receive only bounded Bonjour output, never general Internet');
 assert(mdns.some(line => /ip daddr 172\.20\.10\.0\/28.*udp sport 5353 udp dport 1024-65535/.test(line)),
     'legacy unicast queries from ephemeral ports receive a bounded unicast reply');

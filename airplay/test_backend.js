@@ -35,7 +35,7 @@ const fakeFs = {existsSync:()=>true,lstatSync:()=>({isSocket:()=>true,uid:12233}
     statSync:p=>({dev:1,ino:/control\.sock$/.test(p)?socketInode:7,mtime:new Date(0)})};
 const modules = {
     './resolver':{refresh:()=>startupOrder.push('dns'),hasUplink:()=>uplinkOnline},fs:fakeFs,path:require('path'),'./receiver':{Receiver,validVideoViewport:require('../apps/pllana_airplay/receiver').validVideoViewport},
-    './audio_route':{AudioRoute,AUDIO_SINK:'fakesink'},'./kit/signals':{},
+    './audio_route':{AudioRoute,AUDIO_SINK:'fakesink'},'./mdns_responder':{UplinkResponder:class extends EventEmitter{setServices(s){this.services=s;}setLease(l){this.lease=l;}stop(){this.stopped=true;}}},'./kit/signals':{},
     './music_controls':{MusicControls},
     child_process:{spawn:(binary,args,options)=>{
         const child=new EventEmitter(); child.kill=signal=>{child.killed=signal;};

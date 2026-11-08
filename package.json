@@ -1,10 +1,10 @@
 {
   "name": "bmw-airplay-by-pllana-io",
-  "version": "0.4.7",
+  "version": "0.4.8",
   "private": true,
   "description": "Experimental native BMW MGU AirPlay receiver by Leon Pllana IT-Solutions",
   "license": "GPL-3.0-or-later",
   "scripts": {
-    "test": "node airplay/test_audio_route.js && node airplay/test_backend.js && node airplay/test_backend_client.js && node airplay/test_receiver.js && node airplay/test_receiver_disconnect.js && node airplay/test_frontend_lifecycle.js && node airplay/test_video_bridge.js && node airplay/test_logo_bridge.js && node airplay/test_audio_metadata.js && node airplay/test_music_artwork_bridge.js && node airplay/test_music_view.js && node airplay/test_music_controls.js && node airplay/test_diagnose.js && node airplay/test_network.js && node airplay/test_resolver.js && node airplay/test_bmw_media.js && node airplay/test_carplay_focus.js"
+    "test": "node airplay/test_audio_route.js && node airplay/test_backend.js && node airplay/test_backend_client.js && node airplay/test_receiver.js && node airplay/test_receiver_disconnect.js && node airplay/test_frontend_lifecycle.js && node airplay/test_video_bridge.js && node airplay/test_logo_bridge.js && node airplay/test_audio_metadata.js && node airplay/test_music_artwork_bridge.js && node airplay/test_music_view.js && node airplay/test_music_controls.js && node airplay/test_diagnose.js && node airplay/test_network.js && node airplay/test_resolver.js && node airplay/test_bmw_media.js && node airplay/test_carplay_focus.js && node airplay/test_mdns.js"
   }
 }

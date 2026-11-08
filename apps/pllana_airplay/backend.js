@@ -234,6 +234,25 @@ function graceWithoutUI() {
         graceTimer = null; if (!client && !persistsWithoutUI()) priorityStop().catch(() => {});
     }, DISCONNECT_GRACE_MS);
 }
+// Hotspot discovery: announce UxPlay's own Bonjour records on the Wi-Fi uplink
+// (iPhone hotspot via mgu-uplink), where the BMW mdnsd does not announce.
+const { UplinkResponder } = require('./mdns_responder');
+const uplinkMdns = new UplinkResponder();
+uplinkMdns.on('diagnostic', code => receiver.emit('diagnostic', code));
+receiver.on('dnssd', services => uplinkMdns.setServices(services));
+function readUplinkLease() {
+    // Per-app copy for apps with uplink access, else the shared lease.
+    for (const file of [path.join(root, 'data', 'uplink.json'), '/run/mgu-uplink/lease.json']) {
+        try { const st = fs.statSync(file); if (st.isFile() && st.size < 16384) return JSON.parse(fs.readFileSync(file, 'utf8')); }
+        catch (e) { /* absent while offline */ }
+    }
+    return null;
+}
+let uplinkTimer = null;
+(function pollUplink() {
+    uplinkMdns.setLease(readUplinkLease());
+    uplinkTimer = setTimeout(pollUplink, 3000);
+})();
 receiver.on('state', state => {
     if (wanted && state.mode === 'audio') standaloneAudio = true;
     else if (wanted && (state.mode === 'mirror' || state.mode === 'hls')) standaloneAudio = false;
@@ -354,7 +373,7 @@ const timer = setInterval(() => {
 // under the older unit's Restart=on-failure.
 function shutdown(code) {
     if (shuttingDown) return;
-    shuttingDown = true; clearInterval(timer); clearTimeout(graceTimer); clearTimeout(restartTimer); clearTimeout(stableTimer);
+    shuttingDown = true; clearInterval(timer); clearTimeout(uplinkTimer); uplinkMdns.stop(); clearTimeout(graceTimer); clearTimeout(restartTimer); clearTimeout(stableTimer);
     music.close();
     if (reportChild) { try { reportChild.kill('SIGKILL'); } catch (e) {} reportChild = null; }
     if (client) client.destroy();

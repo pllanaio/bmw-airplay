@@ -17,6 +17,31 @@ Der historische Git-Tag v0.2.6 bezeichnet den ersten veröffentlichten
 Quellcode-Snapshot. Die nachträgliche Store-Anbindung und diese ausführliche
 Dokumentation stehen auf main. Der Tag wird dafür nicht nachträglich verschoben.
 
+## Änderungen in 0.4.8 – AirPlay über den WLAN-Uplink (iPhone-Hotspot)
+
+Ziel: Die HeadUnit hängt per mgu-uplink am Hotspot des iPhones; das iPhone
+findet und nutzt den Empfänger in genau diesem Netz, ohne sich zusätzlich
+mit dem BMW-WLAN zu verbinden.
+
+- Der BMW-mDNS-Dienst kündigt den Empfänger nur auf den Fahrzeug-
+  Schnittstellen an. Auf dem Uplink (`wlan1`, ohne zweites Funkmodul
+  `wlan0`) tat das niemand. UxPlay gibt jetzt seine tatsächlich
+  registrierten Bonjour-Einträge aus (`MGU_DNSSD`, Name, Port, TXT inkl.
+  Schlüssel); das Backend kündigt genau diese mit einem eigenen
+  mDNS-Responder nur auf der Uplink-Lease an und beantwortet nur Absender
+  aus dem privaten Hotspot-Subnetz (Multicast, QU- und Legacy-Anfragen,
+  Abmeldung beim Beenden). Port 5353 wird wie beim BMW-Dienst mit
+  `SO_REUSEADDR` geteilt.
+- Die Uplink-Firewall-Regeln (mDNS ein/aus, AirPlay 7100–7102) hängen nicht
+  mehr davon ab, dass der BMW-mDNS-Dienst auf dem Uplink gefunden wird.
+- Geprüft: unabhängiger mDNS-Client (python-zeroconf) findet `_airplay._tcp`
+  und `_raop._tcp` mit Port, Uplink-Adresse und unveränderten TXT-Daten,
+  auch unter Node 8.16.2; Anfragen von außerhalb des Hotspot-Netzes bleiben
+  unbeantwortet. Im CI meldet die gebaute UxPlay-Laufzeit gegen einen
+  echten mdnsd beide Einträge.
+
+Am Fahrzeug zu prüfen: Erkennung und Verbindung über den Hotspot.
+
 ## Änderungen in 0.4.7 – Hotspot-Erkennung und vorbereitete Sendersteuerung
 
 - Vorhandener MGU-Uplink liefert bereits Internet für HLS. Ergänzt wird
