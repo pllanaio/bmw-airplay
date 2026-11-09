@@ -1,6 +1,6 @@
 {
   "name": "bmw-airplay-by-pllana-io",
-  "version": "0.6.2",
+  "version": "0.6.3",
   "private": true,
   "description": "PllanaCast for BMW: experimental native BMW MGU AirPlay/Android receiver by Leon Pllana IT-Solutions",
   "license": "GPL-3.0-or-later",

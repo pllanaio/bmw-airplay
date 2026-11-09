@@ -102,7 +102,7 @@ public final class CastService extends Service {
         CastLog.add("Bildschirm " + size.x + "×" + size.y + " → " + target[0] + "×" + target[1] + ", verbinde " + host + ":" + port);
         connection = new CastConnection();
         try {
-            connection.connect(host, port, code, Build.MANUFACTURER + " " + Build.MODEL, withAudio, target[0], target[1], new CastConnection.Listener() {
+            connection.connect(this, host, port, code, Build.MANUFACTURER + " " + Build.MODEL, withAudio, target[0], target[1], new CastConnection.Listener() {
                 @Override public void onStopRequested() { main.post(() -> shutdown("Im Auto beendet")); }
                 @Override public void onClosed(String reason) { main.post(() -> shutdown("stopped_by_car".equals(reason) ? "Im Auto beendet" : "Verbindung getrennt")); }
                 @Override public void onKeyFrameNeeded() { ScreenEncoder e = encoder; if (e != null) e.requestKeyFrame(); }

@@ -116,7 +116,8 @@ int main(int argc, char **argv) {
     finish_and_rebuild();
 
     /* Natural mirror-origin end permits resumed mirror packets. Natural
-       direct end and direct playlistRemove retain waiting mode. */
+       direct end retains waiting mode. A direct item survives playlistRemove
+       (iPhone locked); its explicit stop then returns to waiting mode. */
     video_process(NULL, NULL, &packet);
     on_video_play(NULL, "http://127.0.0.1/natural-mirror.m3u8", 0.0f);
     finish_and_rebuild();
@@ -128,6 +129,8 @@ int main(int argc, char **argv) {
     on_video_play(NULL, "http://127.0.0.1/direct-removed.m3u8", 0.0f);
     reset_loop = false;
     on_video_playlist_remove(NULL);
+    assert(!reset_loop && url == "http://127.0.0.1/direct-removed.m3u8");
+    on_video_stop(NULL);
     assert(reset_loop && url.empty() && !g_atomic_int_get(&mgu_allow_mirror));
     finish_and_rebuild();
 

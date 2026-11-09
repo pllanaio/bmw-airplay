@@ -8,7 +8,7 @@ einem separat installierten UxPlay-Empfänger und BMW-Audiorouting.
 Die bisherige Erprobung ist keine Freigabe für alle MGU-Hardwarestände,
 Fahrzeugausstattungen, iPhone-Apps oder iOS-Versionen.
 
-Der vorbereitete Quellstand für App und Laufzeit ist **0.6.2**. Die neuen
+Der vorbereitete Quellstand für App und Laufzeit ist **0.6.3**. Die neuen
 Änderungen sind lokal geprüft und noch nicht am Fahrzeug abgenommen. Die
 Fahrzeugbestätigungen weiter unten beziehen sich auf die dort genannten
 älteren Versionen.
@@ -16,6 +16,18 @@ Fahrzeugbestätigungen weiter unten beziehen sich auf die dort genannten
 Der historische Git-Tag v0.2.6 bezeichnet den ersten veröffentlichten
 Quellcode-Snapshot. Die nachträgliche Store-Anbindung und diese ausführliche
 Dokumentation stehen auf main. Der Tag wird dafür nicht nachträglich verschoben.
+
+## Änderungen in 0.6.3 – iPhone gesperrt, Android im BMW-WLAN
+
+- iPhone: Ein direkt mit dem AirPlay-Knopf gestartetes YouTube-Video lief
+  nicht weiter, sobald das iPhone gesperrt wurde. YouTube räumt dabei seine
+  Warteschlange auf (`playlistRemove`); das galt bisher nur bei aus der
+  Spiegelung gestarteten Videos als Aufräumen und beendete sonst das Video.
+  Jetzt läuft ein spielendes Video in beiden Fällen weiter. Ein ausdrückliches
+  Stoppen am iPhone, Pause und „Video beenden“ im Auto wirken weiterhin.
+- Android: Das BMW-WLAN hat kein Internet, deshalb schickte Android die
+  Verbindung über Mobilfunk („BMW nicht erreichbar“). PllanaCast for BMW bindet die
+  Verbindung jetzt an das WLAN, in dem der BMW liegt.
 
 ## Änderungen in 0.6.2 – neuer Name „PllanaCast for BMW“
 
