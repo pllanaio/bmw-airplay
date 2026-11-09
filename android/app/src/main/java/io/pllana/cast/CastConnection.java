@@ -1,6 +1,14 @@
 package io.pllana.cast;
 
+import android.content.Context;
+import android.net.ConnectivityManager;
+import android.net.LinkAddress;
+import android.net.LinkProperties;
+import android.net.Network;
+
 import java.io.BufferedOutputStream;
+import java.net.Inet4Address;
+import java.net.InetAddress;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -61,8 +69,44 @@ final class CastConnection {
 
     String receiverName() { return receiverName; }
 
-    void connect(String host, int port, String code, String device, boolean audio, int width, int height, Listener listener) throws IOException {
+    /**
+     * The network whose subnet contains the head unit. The BMW WLAN has no
+     * Internet, so Android would otherwise send the connection over mobile
+     * data (and time out). A phone hotspot client needs no binding: tethered
+     * subnets are always routed locally.
+     */
+    static Network localNetwork(Context context, String host) {
+        try {
+            byte[] target = InetAddress.getByName(host).getAddress();
+            if (target.length != 4) return null;
+            ConnectivityManager cm = context.getSystemService(ConnectivityManager.class);
+            for (Network network : cm.getAllNetworks()) {
+                LinkProperties lp = cm.getLinkProperties(network);
+                if (lp == null) continue;
+                for (LinkAddress la : lp.getLinkAddresses()) {
+                    if (!(la.getAddress() instanceof Inet4Address)) continue;
+                    byte[] own = la.getAddress().getAddress();
+                    int bits = la.getPrefixLength();
+                    boolean same = bits > 0 && bits <= 32;
+                    for (int i = 0; same && i < 4; i++) {
+                        int mask = bits >= 8 * (i + 1) ? 0xff : bits <= 8 * i ? 0 : (0xff << (8 - (bits - 8 * i))) & 0xff;
+                        if ((own[i] & mask) != (target[i] & mask)) same = false;
+                    }
+                    if (same) {
+                        CastLog.add("Verbinde über " + lp.getInterfaceName() + " (" + la + ")");
+                        return network;
+                    }
+                }
+            }
+        } catch (Exception e) { CastLog.error("Netzwahl", e); }
+        CastLog.add("Kein WLAN mit dieser Adresse gefunden – nutze die Standardroute (z. B. eigener Hotspot)");
+        return null;
+    }
+
+    void connect(Context context, String host, int port, String code, String device, boolean audio, int width, int height, Listener listener) throws IOException {
         this.listener = listener;
+        Network network = localNetwork(context, host);
+        if (network != null) network.bindSocket(socket);
         socket.connect(new InetSocketAddress(host, port), 5000);
         socket.setTcpNoDelay(true);
         socket.setSoTimeout(15000);

@@ -185,8 +185,9 @@ extern "C" void mgu_mirror_start(void *cls) {
     handlers = source / 'lib/http_handlers.h'
     handlers.write_text(once(handlers.read_text(), '''        if (id == raop->current_video) {
             raop->current_video = -1;''', '''        if (id == raop->current_video) {
-            /* Keep local playlist routes valid when the phone backgrounds. */
-            if (!raop->callbacks.is_hls_detached || !raop->callbacks.is_hls_detached(raop->callbacks.cls))
+            /* Keep local playlist routes valid when the phone backgrounds or
+             * locks while an item plays (any origin). */
+            if (!raop->callbacks.is_hls_active || !raop->callbacks.is_hls_active(raop->callbacks.cls))
                 raop->current_video = -1;'''))
     handlers.write_text(once(handlers.read_text(), '''    set_next_media_uri_id(airplay_video, 0);
     fcup_request((void *) conn, playback_location, apple_session_id, get_next_FCUP_RequestID(airplay_video));''', '''    if (raop->callbacks.on_video_loading) raop->callbacks.on_video_loading(raop->callbacks.cls);
@@ -199,10 +200,12 @@ extern "C" void mgu_mirror_start(void *cls) {
     float rate;
     bool buffer_empty, buffer_full;'''
     ux = once(ux, anchor, anchor + '''
-    if (mgu_is_detached()) {
+    if (video_renderer_is_hls_active()) {
         video_get_playback_info(&duration, &position, &seek_start, &seek_end, &rate, &buffer_empty, &buffer_full);
-        /* playlistRemove alone is also sent as background queue cleanup.
-         * Explicit /stop, rate=0 and HLS TEARDOWN still control playback. */
+        /* playlistRemove alone is also sent as background queue cleanup, e.g.
+         * when the iPhone is locked during a YouTube video started directly
+         * with the AirPlay button. A playing item continues whatever its
+         * origin; explicit /stop, rate=0 and HLS TEARDOWN still control it. */
         printf("MGU_PLAYLIST_CLEANUP\\n"); fflush(stdout);
         return (float) position;
     }''')

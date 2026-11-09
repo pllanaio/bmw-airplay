@@ -338,7 +338,7 @@ class Receiver extends EventEmitter {
                 // Older runtimes used this marker for detached mirror-origin
                 // videos. New runtimes report origin and honor phone controls.
                 if (line === 'MGU_MEDIA_DETACHED' && this.state.mode === 'hls' && !this.features.videoModes) { this.update({ detached: true, returnMode: 'mirror' }); this.emit('diagnostic', 'video_detached_from_phone'); }
-                if (line === 'MGU_PHONE_STOP_IGNORED' || line === 'MGU_PHONE_PAUSE_IGNORED') this.emit('diagnostic', line.toLowerCase());
+                if (line === 'MGU_PHONE_STOP_IGNORED' || line === 'MGU_PHONE_PAUSE_IGNORED' || line === 'MGU_PLAYLIST_CLEANUP') this.emit('diagnostic', line.toLowerCase());
                 if (line === 'MGU_MEDIA_ENDED') { this.update({ playlistPending: true }); this.emit('diagnostic', 'mgu_media_ended'); }
                 if (line === 'MGU_PLAYLIST_INSERT' || line === 'MGU_PLAYLIST_CANCELLED') {
                     this.update({ playlistPending: false }); this.emit('diagnostic', line.toLowerCase());

@@ -82,14 +82,15 @@ int main(void) {
     direct(&raop,bad,strlen(bad),true,415);assert(stopped==1);
     assert(loading == 2); /* Invalid/proxy requests do not reserve direct media. */
     request_playlist(&raop, raop.airplay_video[1], "#EXTM3U\nNEW\n");
-    /* playlistRemove from a backgrounded sender must preserve current_video:
-       the local player can still request its playlist and finish normally. */
+    /* playlistRemove from a backgrounded or locked sender must preserve
+       current_video while an item plays (any origin): the local player can
+       still request its playlist and finish normally. */
     set_playback_uuid(raop.airplay_video[0], "aaaaaaaa-1111-4222-8333-444444444444", 36);
     set_playback_uuid(raop.airplay_video[1], "dddddddd-1111-4222-8333-444444444444", 36);
     raop.current_video = 1;
     set_apple_session_id(raop.airplay_video[1], "11111111-2222-4333-8444-555555555555", 36);
     raop.callbacks.on_video_playlist_remove = removed;
-    raop.callbacks.is_hls_detached = is_detached;
+    raop.callbacks.is_hls_active = is_detached;
     detached = true; remove_playlist(&raop);
     assert(raop.current_video == 1);
     request_playlist(&raop, raop.airplay_video[1], "#EXTM3U\nNEW\n");
